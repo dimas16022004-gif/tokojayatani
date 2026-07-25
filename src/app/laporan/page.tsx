@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Transaction, Product } from "@/lib/types";
+import { Transaction, Product, PaymentMethod } from "@/lib/types";
 import { supabase, INITIAL_MOCK_PRODUCTS } from "@/lib/supabaseClient";
 import { formatRupiah, formatDateTime, formatDateOnly } from "@/lib/utils";
 import StatCard from "@/components/StatCard";
@@ -19,6 +19,7 @@ import {
   QrCode,
   FileText,
   Filter,
+  Search,
 } from "lucide-react";
 
 export default function LaporanPage() {
@@ -33,6 +34,11 @@ export default function LaporanPage() {
 
   const [selectedQuarter, setSelectedQuarter] = useState<string>(currentQuarter.toString());
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
+
+  // Filter Riwayat Transaksi Interaktif
+  const [searchHistory, setSearchHistory] = useState("");
+  const [historyPaymentFilter, setHistoryPaymentFilter] = useState<string>("Semua");
+  const [historyDateFilter, setHistoryDateFilter] = useState<string>("semua");
 
   // Initial Mock Transactions jika DB kosong
   const mockTransactions: Transaction[] = [
@@ -85,6 +91,15 @@ export default function LaporanPage() {
           created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
         },
       ],
+    },
+    {
+      id: "tx-3",
+      total_amount: 230000,
+      total_profit: 45000,
+      payment_method: "QRIS",
+      customer_name: "Bu Siti Tani",
+      created_at: new Date(Date.now() - 3600000 * 24).toISOString(),
+      items: [],
     },
   ];
 
@@ -148,7 +163,7 @@ export default function LaporanPage() {
 
   // Filter Transaksi 3 Bulanan (Triwulan)
   const getQuarterRange = (quarter: number, year: number) => {
-    const startMonth = (quarter - 1) * 3; // 0, 3, 6, 9
+    const startMonth = (quarter - 1) * 3;
     const startDate = new Date(year, startMonth, 1);
     const endDate = new Date(year, startMonth + 3, 0, 23, 59, 59);
     return { startDate, endDate };
@@ -169,7 +184,6 @@ export default function LaporanPage() {
     }
   };
 
-  // Filter Data Berdasarkan 3 Bulan
   const quarterlyTransactions = transactions.filter((tx) => {
     if (selectedQuarter === "all") return true;
     const txDate = new Date(tx.created_at);
@@ -232,6 +246,35 @@ export default function LaporanPage() {
     document.body.removeChild(link);
   };
 
+  // FILTER RIWAYAT TRANSAKSI TERHUBUNG
+  const filteredHistoryTransactions = transactions.filter((tx) => {
+    // 1. Match Search (Nama Pelanggan / ID Nota)
+    const matchesSearch =
+      (tx.customer_name && tx.customer_name.toLowerCase().includes(searchHistory.toLowerCase())) ||
+      tx.id.toLowerCase().includes(searchHistory.toLowerCase());
+
+    // 2. Match Payment Method
+    const matchesPayment =
+      historyPaymentFilter === "Semua" || tx.payment_method === historyPaymentFilter;
+
+    // 3. Match Date Filter
+    let matchesDate = true;
+    const txDate = new Date(tx.created_at);
+    const now = new Date();
+
+    if (historyDateFilter === "hari_ini") {
+      matchesDate = txDate.toDateString() === now.toDateString();
+    } else if (historyDateFilter === "7_hari") {
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      matchesDate = txDate >= sevenDaysAgo;
+    } else if (historyDateFilter === "bulan_ini") {
+      matchesDate =
+        txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
+    }
+
+    return matchesSearch && matchesPayment && matchesDate;
+  });
+
   return (
     <div className="space-y-6">
       {/* Header Banner */}
@@ -242,7 +285,7 @@ export default function LaporanPage() {
           </div>
           <h2 className="text-2xl sm:text-3xl font-black">Laporan Penjualan</h2>
           <p className="text-emerald-100 text-sm sm:text-base font-medium mt-0.5">
-            Ringkasan omzet, laporan triwulanan (per 3 bulan), & ekspor otomatis ke Excel.
+            Ringkasan omzet, laporan triwulanan (per 3 bulan), & filter riwayat transaksi.
           </p>
         </div>
 
@@ -394,7 +437,7 @@ export default function LaporanPage() {
         </div>
       </div>
 
-      {/* Layout Grid Dua Kolom: Peringatan Stok Menipis & Riwayat Penjualan */}
+      {/* Layout Grid Dua Kolom: Peringatan Stok Menipis & Riwayat Penjualan Terfilter */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Kolom Kiri: Peringatan Stok Menipis (Red Warning) */}
         <div className="bg-white rounded-3xl p-5 border-2 border-rose-200 shadow-sm space-y-4">
@@ -439,25 +482,69 @@ export default function LaporanPage() {
           </div>
         </div>
 
-        {/* Kolom Kanan: Riwayat Transaksi Terakhir */}
+        {/* Kolom Kanan: Riwayat Transaksi Terakhir dengan FILTER INTERAKTIF */}
         <div className="lg:col-span-2 bg-white rounded-3xl p-5 border-2 border-emerald-100 shadow-sm space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-emerald-100">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-emerald-100">
             <div className="flex items-center gap-2 text-emerald-900 font-black text-lg">
               <ShoppingBag className="w-6 h-6 text-emerald-700" />
-              <h3>Riwayat Transaksi Terakhir</h3>
+              <h3>Riwayat Transaksi</h3>
             </div>
             <span className="text-xs font-bold text-gray-500">
-              Menampilkan {quarterlyTransactions.length} Transaksi Terfilter
+              Menampilkan {filteredHistoryTransactions.length} dari {transactions.length} Transaksi
             </span>
           </div>
 
+          {/* BARIS FILTER RIWAYAT TRANSAKSI */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-emerald-50/60 p-3 rounded-2xl border border-emerald-100">
+            {/* Search Box */}
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Cari pembeli / ID nota..."
+                value={searchHistory}
+                onChange={(e) => setSearchHistory(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-gray-300 text-xs font-bold text-gray-900 focus:border-emerald-600 focus:outline-hidden"
+              />
+              <Search className="w-4 h-4 text-gray-400 absolute left-2.5 top-2.5" />
+            </div>
+
+            {/* Filter Metode Pembayaran */}
+            <div>
+              <select
+                value={historyPaymentFilter}
+                onChange={(e) => setHistoryPaymentFilter(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl bg-white border border-gray-300 text-xs font-bold text-gray-900 focus:border-emerald-600 focus:outline-hidden"
+              >
+                <option value="Semua">Semua Pembayaran</option>
+                <option value="Tunai">Tunai (Cash)</option>
+                <option value="QRIS">QRIS / Transfer</option>
+                <option value="Bon">Bon / Piutang</option>
+              </select>
+            </div>
+
+            {/* Filter Waktu */}
+            <div>
+              <select
+                value={historyDateFilter}
+                onChange={(e) => setHistoryDateFilter(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl bg-white border border-gray-300 text-xs font-bold text-gray-900 focus:border-emerald-600 focus:outline-hidden"
+              >
+                <option value="semua">Semua Rentang Waktu</option>
+                <option value="hari_ini">Hari Ini</option>
+                <option value="7_hari">7 Hari Terakhir</option>
+                <option value="bulan_ini">Bulan Ini</option>
+              </select>
+            </div>
+          </div>
+
+          {/* DAFTAR RIWAYAT TRANSAKSI TERFILTER */}
           <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
-            {quarterlyTransactions.length === 0 ? (
+            {filteredHistoryTransactions.length === 0 ? (
               <p className="text-center text-sm font-bold text-gray-500 py-8">
-                Belum ada transaksi tercatat untuk periode ini.
+                Tidak ada riwayat transaksi yang cocok dengan filter.
               </p>
             ) : (
-              quarterlyTransactions.map((tx) => (
+              filteredHistoryTransactions.map((tx) => (
                 <div
                   key={tx.id}
                   className="p-4 rounded-2xl bg-gray-50 border border-gray-200 hover:border-emerald-300 transition-colors space-y-2"
