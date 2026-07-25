@@ -156,14 +156,7 @@ export default function BonPage() {
   const fetchBon = async () => {
     setLoading(true);
     try {
-      // 1. Sync data: Reset transaksi Bon lama yang ter-set Lunas secara otomatis oleh RPC lama menjadi Belum Lunas
-      await supabase
-        .from("transactions")
-        .update({ payment_status: "Belum Lunas", paid_at: null })
-        .eq("payment_method", "Bon")
-        .or("paid_at.is.null,payment_status.eq.Lunas");
-
-      // 2. Fetch data Bon
+      // Fetch data Bon dari DB
       const { data, error } = await supabase
         .from("transactions")
         .select("*, transaction_items(*)")
