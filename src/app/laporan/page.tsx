@@ -19,16 +19,10 @@ import {
   FileText,
   Filter,
   Search,
-  Bell,
   CheckCircle2,
-  BookOpen,
-  User,
-  Clock,
   CalendarDays,
   CalendarRange,
   CalendarCheck,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
 
 export default function LaporanPage() {
@@ -36,15 +30,9 @@ export default function LaporanPage() {
   const [lowStockProducts, setLowStockProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Filter 3 Bulanan (Triwulan)
   const currentYear = new Date().getFullYear();
-  const currentMonth = new Date().getMonth() + 1; // 1-12
-  const currentQuarter = Math.ceil(currentMonth / 3); // 1, 2, 3, 4
-
-  // Pengingat di Awal Bulan ke-4 (Bulan 1, 4, 7, 10)
-  const isQuarterReminderMonth = [1, 4, 7, 10].includes(currentMonth);
-  const previousQuarter = currentQuarter === 1 ? 4 : currentQuarter - 1;
-  const previousQuarterYear = currentQuarter === 1 ? currentYear - 1 : currentYear;
+  const currentMonth = new Date().getMonth() + 1;
+  const currentQuarter = Math.ceil(currentMonth / 3);
 
   const [selectedQuarter, setSelectedQuarter] = useState<string>(currentQuarter.toString());
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
@@ -446,166 +434,6 @@ export default function LaporanPage() {
         </div>
       </div>
 
-      {/* MODUL KHUSUS BUKU CATATAN PIUTANG / HUTANG PELANGGAN */}
-      <div className="bg-white rounded-3xl p-5 sm:p-6 border-4 border-rose-300 shadow-xl space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-rose-200">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-rose-600 text-white flex items-center justify-center font-bold shadow-md">
-              <BookOpen className="w-6 h-6" />
-            </div>
-            <div>
-              <h3 className="text-xl sm:text-2xl font-black text-gray-900">
-                Buku Catatan Hutang Pelanggan (Bon)
-              </h3>
-              <p className="text-xs sm:text-sm font-bold text-rose-700">
-                Daftar pembeli yang memiliki bon dan belum melunasi pembayaran.
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-rose-50 border-2 border-rose-200 p-3.5 rounded-2xl text-right shrink-0">
-            <span className="text-xs font-bold text-rose-800 uppercase block">Total Piutang Belum Dibayar:</span>
-            <span className="text-xl sm:text-2xl font-black text-rose-600 block">
-              {formatRupiah(totalUnpaidDebtAmount)}
-            </span>
-            <span className="text-[11px] font-bold text-gray-500 block">
-              ({unpaidDebts.length} Pelanggan Berhutang)
-            </span>
-          </div>
-        </div>
-
-        {/* Tabel / Daftar Pelanggan Berhutang */}
-        <div className="space-y-3">
-          {unpaidDebts.length === 0 ? (
-            <div className="p-8 text-center bg-emerald-50 rounded-2xl border border-emerald-200 text-emerald-900 font-bold">
-              <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto mb-2" />
-              <p className="text-base font-black">Alhamdulillah! Tidak Ada Hutang Pelanggan yang Tertunggak.</p>
-              <p className="text-xs font-medium text-emerald-700 mt-0.5">Semua transaksi bon telah lunas terbayar.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-1">
-              {unpaidDebts.map((tx) => (
-                <div
-                  key={tx.id}
-                  className="p-4 rounded-2xl bg-rose-50/60 border-2 border-rose-200 hover:border-rose-400 transition-all flex flex-col justify-between gap-3 shadow-xs"
-                >
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-black text-base text-gray-900 flex items-center gap-1.5">
-                        <User className="w-4 h-4 text-rose-600" /> {tx.customer_name || "Pelanggan Umumm"}
-                      </span>
-                      <span className="px-2.5 py-1 text-xs font-black bg-rose-600 text-white rounded-lg animate-pulse">
-                        BELUM LUNAS
-                      </span>
-                    </div>
-
-                    <div className="text-xs text-gray-600 font-medium flex items-center justify-between border-t border-rose-200/60 pt-1.5">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5 text-gray-400" /> {formatDateTime(tx.created_at)}
-                      </span>
-                      <span className="font-mono text-gray-500">#{tx.id.substring(0, 8)}</span>
-                    </div>
-
-                    <div className="flex items-baseline justify-between pt-1">
-                      <span className="text-xs font-bold text-gray-500 uppercase">Sisa Total Hutang:</span>
-                      <span className="text-xl font-black text-rose-700">
-                        {formatRupiah(tx.total_amount)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handlePayDebt(tx.id, tx.customer_name || "Pelanggan")}
-                    className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm flex items-center justify-center gap-2 shadow-md transition-transform active:scale-95"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Tandai Lunas (Bayar Hutang)</span>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* NOTIFIKASI PENGINGAT DI AWAL BULAN KE-4 */}
-      <div
-        className={`p-5 rounded-3xl border-2 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all ${
-          isQuarterReminderMonth
-            ? "bg-gradient-to-r from-amber-500 to-amber-600 border-amber-300 text-emerald-950 shadow-xl"
-            : "bg-gradient-to-r from-emerald-900 to-emerald-800 border-emerald-600 text-white"
-        }`}
-      >
-        <div className="flex items-start gap-3">
-          <div
-            className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 font-bold shadow-md ${
-              isQuarterReminderMonth
-                ? "bg-emerald-950 text-amber-300"
-                : "bg-amber-400 text-emerald-950"
-            }`}
-          >
-            <Bell
-              className={`w-6 h-6 ${
-                isQuarterReminderMonth ? "animate-bounce text-amber-400" : "text-emerald-950"
-              }`}
-            />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span
-                className={`px-2.5 py-0.5 rounded-md text-xs font-black uppercase ${
-                  isQuarterReminderMonth
-                    ? "bg-emerald-950 text-amber-300"
-                    : "bg-amber-400 text-emerald-950"
-                }`}
-              >
-                {isQuarterReminderMonth
-                  ? "PENGINGAT AWAL BULAN KE-4"
-                  : "Status Rekap 3 Bulanan"}
-              </span>
-              <span className="text-xs font-bold">
-                {getQuarterLabel(currentQuarter.toString())} {currentYear}
-              </span>
-            </div>
-            <h3 className="text-lg sm:text-xl font-black mt-1">
-              {isQuarterReminderMonth
-                ? `Waktunya Rekap Pembukuan 3 Bulan Lalu (${getQuarterLabel(
-                    previousQuarter.toString()
-                  )})!`
-                : `Periode Saat Ini: ${getQuarterLabel(currentQuarter.toString())}`}
-            </h3>
-            <p className="text-xs sm:text-sm font-medium mt-0.5 opacity-90">
-              {isQuarterReminderMonth
-                ? "Bulan ini adalah awal bulan ke-4. Tekan tombol di sebelah kanan untuk mengekspor laporan 3 bulan lalu secara manual."
-                : "Sistem akan menampilkan pengingat utama setiap awal bulan ke-4 (Januari, April, Juli, Oktober)."}
-            </p>
-          </div>
-        </div>
-
-        <button
-          onClick={() =>
-            handleExportCustomCSV(
-              transactions.filter((tx) => {
-                const txDate = new Date(tx.created_at);
-                const { startDate, endDate } = getQuarterRange(
-                  previousQuarter,
-                  previousQuarterYear
-                );
-                return txDate >= startDate && txDate <= endDate;
-              }),
-              `Laporan_Triwulan_${previousQuarter}_Tahun_${previousQuarterYear}`
-            )
-          }
-          className={`self-stretch md:self-auto py-3 px-5 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-xl transition-transform active:scale-95 whitespace-nowrap ${
-            isQuarterReminderMonth
-              ? "bg-emerald-950 hover:bg-emerald-900 text-amber-300"
-              : "bg-amber-400 hover:bg-amber-300 text-emerald-950"
-          }`}
-        >
-          <Download className="w-5 h-5 stroke-[3]" />
-          <span>Ekspor 3 Bulan Lalu (.csv)</span>
-        </button>
-      </div>
 
       {/* Stat Cards Ringkasan Penjualan Hari Ini */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
