@@ -62,7 +62,11 @@ export default function ProductModal({
       return;
     }
     setIsSubmitting(true);
-    await onSave(formData);
+    const sanitizedData = {
+      ...formData,
+      barcode: formData.barcode && formData.barcode.trim() ? formData.barcode.trim() : null,
+    };
+    await onSave(sanitizedData as unknown as Partial<Product>);
     setIsSubmitting(false);
     onClose();
   };

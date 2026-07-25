@@ -119,13 +119,33 @@ export default function KasirPage() {
 
   const handleClearCart = () => setCart([]);
 
-  // Eksekusi Transaksi (Direct Insert ke Table Transactions & Transaction_Items)
+  // Eksekusi Transaksi (Panggil RPC Atomic process_transaction di Server)
   const handleProcessTransaction = async (
     paymentAmount: number,
     paymentMethod: PaymentMethod,
     customerName: string
   ): Promise<boolean> => {
     try {
+      const payloadItems = cart.map((item) => ({
+        product_id: item.product.id,
+        quantity: item.quantity,
+      }));
+
+      // 1. Coba panggil RPC Supabase terlebih dahulu
+      const { error: rpcError } = await supabase.rpc("process_transaction", {
+        items: payloadItems,
+        p_payment_method: paymentMethod,
+        p_customer_name: customerName || "Pelanggan Umum",
+      });
+
+      if (!rpcError) {
+        await fetchProducts();
+        return true;
+      }
+
+      console.warn("RPC Supabase error, mencoba direct table insert fallback:", rpcError.message);
+
+      // 2. Direct Insert Fallback jika RPC belum di-deploy di Supabase Cloud
       const totalAmount = cart.reduce(
         (sum, item) => sum + item.product.sell_price * item.quantity,
         0
@@ -137,7 +157,6 @@ export default function KasirPage() {
       );
       const paymentStatus = paymentMethod === "Bon" ? "Belum Lunas" : "Lunas";
 
-      // 1. Insert Transaksi ke tabel transactions
       const { data: newTx, error: txErr } = await supabase
         .from("transactions")
         .insert([
@@ -153,55 +172,36 @@ export default function KasirPage() {
         .select()
         .single();
 
-      if (txErr) {
-        console.error("Gagal insert transactions:", txErr);
-        // Jika gagal insert Supabase, update stok lokal
-        setProducts((prevProducts) =>
-          prevProducts.map((p) => {
-            const cartItem = cart.find((item) => item.product.id === p.id);
-            if (cartItem) {
-              return { ...p, stock: Math.max(0, p.stock - cartItem.quantity) };
-            }
-            return p;
-          })
-        );
-        return true;
+      if (txErr || !newTx?.id) {
+        alert(`Gagal menyimpan transaksi ke database: ${txErr?.message || rpcError.message}`);
+        return false;
       }
 
-      if (newTx && newTx.id) {
-        // 2. Insert Detail Barang ke tabel transaction_items
-        const itemPayload = cart.map((item) => ({
-          transaction_id: newTx.id,
-          product_id: item.product.id,
-          product_name: item.product.name,
-          quantity: item.quantity,
-          buy_price: item.product.buy_price,
-          sell_price: item.product.sell_price,
-          profit: (item.product.sell_price - item.product.buy_price) * item.quantity,
-        }));
+      const itemPayload = cart.map((item) => ({
+        transaction_id: newTx.id,
+        product_id: item.product.id,
+        product_name: item.product.name,
+        quantity: item.quantity,
+        buy_price: item.product.buy_price,
+        sell_price: item.product.sell_price,
+        profit: (item.product.sell_price - item.product.buy_price) * item.quantity,
+      }));
 
-        const { error: itemsErr } = await supabase
-          .from("transaction_items")
-          .insert(itemPayload);
+      await supabase.from("transaction_items").insert(itemPayload);
 
-        if (itemsErr) {
-          console.error("Gagal insert transaction_items:", itemsErr);
-        }
-
-        // 3. Kurangi Stok Produk di Database
-        for (const item of cart) {
-          const newStock = Math.max(0, item.product.stock - item.quantity);
-          await supabase
-            .from("products")
-            .update({ stock: newStock })
-            .eq("id", item.product.id);
-        }
+      for (const item of cart) {
+        const newStock = Math.max(0, item.product.stock - item.quantity);
+        await supabase
+          .from("products")
+          .update({ stock: newStock })
+          .eq("id", item.product.id);
       }
 
       await fetchProducts();
       return true;
-    } catch (err) {
+    } catch (err: any) {
       console.error("Gagal memproses transaksi:", err);
+      alert(`Terjadi kesalahan sistem: ${err?.message || "Koneksi terputus"}`);
       return false;
     }
   };

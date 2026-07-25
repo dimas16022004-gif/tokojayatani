@@ -214,11 +214,15 @@ export default function LaporanPage() {
     return txDate >= startDate && txDate <= endDate;
   });
 
-  const quarterlyRevenue = quarterlyTransactions.reduce(
+  const quarterlyPaidTransactions = quarterlyTransactions.filter(
+    (tx) => tx.payment_method !== "Bon" || tx.payment_status === "Lunas"
+  );
+
+  const quarterlyRevenue = quarterlyPaidTransactions.reduce(
     (sum, tx) => sum + Number(tx.total_amount),
     0
   );
-  const quarterlyProfit = quarterlyTransactions.reduce(
+  const quarterlyProfit = quarterlyPaidTransactions.reduce(
     (sum, tx) => sum + Number(tx.total_profit),
     0
   );
@@ -435,9 +439,12 @@ export default function LaporanPage() {
     });
   }, [transactions, searchHistory, historyPaymentFilter, historyDebtFilter, periodMode, customDay, customWeek, customMonth]);
 
-  // Ringkasan Statistik Periode yang Difilter
-  const filteredRevenue = filteredHistoryTransactions.reduce((s, tx) => s + Number(tx.total_amount), 0);
-  const filteredProfit = filteredHistoryTransactions.reduce((s, tx) => s + Number(tx.total_profit), 0);
+  // Ringkasan Statistik Periode yang Difilter (Kecualikan Bon Belum Lunas)
+  const filteredPaidTransactions = filteredHistoryTransactions.filter(
+    (tx) => tx.payment_method !== "Bon" || tx.payment_status === "Lunas"
+  );
+  const filteredRevenue = filteredPaidTransactions.reduce((s, tx) => s + Number(tx.total_amount), 0);
+  const filteredProfit = filteredPaidTransactions.reduce((s, tx) => s + Number(tx.total_profit), 0);
 
 
   return (

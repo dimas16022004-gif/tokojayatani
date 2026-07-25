@@ -109,7 +109,8 @@ BEGIN
         SELECT name, stock, buy_price, sell_price 
         INTO v_product_name, v_curr_stock, v_buy_price, v_sell_price
         FROM public.products
-        WHERE id = v_product_id;
+        WHERE id = v_product_id
+        FOR UPDATE;
 
         IF NOT FOUND THEN
             RAISE EXCEPTION 'Produk dengan ID % tidak ditemukan.', v_product_id;

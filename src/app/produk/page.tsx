@@ -52,42 +52,40 @@ export default function ProdukPage() {
 
   // Save (Insert / Update) Produk
   const handleSaveProduct = async (productData: Partial<Product>) => {
+    const payload = {
+      ...productData,
+      barcode: productData.barcode && productData.barcode.trim() ? productData.barcode.trim() : null,
+    };
+
     if (editingProduct) {
       // UPDATE
       try {
         const { error } = await supabase
           .from("products")
-          .update(productData)
+          .update(payload)
           .eq("id", editingProduct.id);
 
-        if (error) throw error;
+        if (error) {
+          alert(`Gagal meng-update produk: ${error.message}`);
+          return;
+        }
         await fetchProducts();
-      } catch (err) {
-        console.warn("Gagal update Supabase, update state lokal:", err);
-        setProducts((prev) =>
-          prev.map((p) =>
-            p.id === editingProduct.id ? ({ ...p, ...productData } as Product) : p
-          )
-        );
+      } catch (err: any) {
+        console.error("Gagal update Supabase:", err);
+        alert(`Terjadi kesalahan saat meng-update produk: ${err?.message || "Gagal terhubung"}`);
       }
     } else {
       // INSERT
       try {
-        const { error } = await supabase.from("products").insert([productData]);
-        if (error) throw error;
+        const { error } = await supabase.from("products").insert([payload]);
+        if (error) {
+          alert(`Gagal menambah produk baru: ${error.message}`);
+          return;
+        }
         await fetchProducts();
-      } catch (err) {
-        console.warn("Gagal insert Supabase, insert state lokal:", err);
-        const newProduct: Product = {
-          id: `p-${Date.now()}`,
-          name: productData.name || "",
-          category: productData.category || "Umum",
-          buy_price: productData.buy_price || 0,
-          sell_price: productData.sell_price || 0,
-          stock: productData.stock || 0,
-          min_stock: productData.min_stock || 5,
-        };
-        setProducts((prev) => [newProduct, ...prev]);
+      } catch (err: any) {
+        console.error("Gagal insert Supabase:", err);
+        alert(`Terjadi kesalahan saat menambah produk: ${err?.message || "Gagal terhubung"}`);
       }
     }
   };
