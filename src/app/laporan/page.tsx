@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Transaction, Product, PaymentMethod } from "@/lib/types";
+import { Transaction, Product } from "@/lib/types";
 import { supabase, INITIAL_MOCK_PRODUCTS } from "@/lib/supabaseClient";
 import { formatRupiah, formatDateTime, formatDateOnly } from "@/lib/utils";
 import StatCard from "@/components/StatCard";
@@ -20,6 +20,8 @@ import {
   FileText,
   Filter,
   Search,
+  Bell,
+  CheckCircle2,
 } from "lucide-react";
 
 export default function LaporanPage() {
@@ -31,6 +33,7 @@ export default function LaporanPage() {
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth() + 1; // 1-12
   const currentQuarter = Math.ceil(currentMonth / 3); // 1, 2, 3, 4
+  const isEndOfQuarterMonth = [3, 6, 9, 12].includes(currentMonth);
 
   const [selectedQuarter, setSelectedQuarter] = useState<string>(currentQuarter.toString());
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
@@ -203,12 +206,10 @@ export default function LaporanPage() {
     0
   );
 
-  // Ekspor Laporan 3 Bulanan (Triwulanan) ke CSV / Excel
-  const handleExportQuarterlyCSV = () => {
-    if (quarterlyTransactions.length === 0) {
-      alert(
-        `Belum ada data transaksi untuk ${getQuarterLabel(selectedQuarter)} ${selectedYear}.`
-      );
+  // Ekspor Laporan Bebas / Kapan Saja (.csv)
+  const handleExportCustomCSV = (targetData: Transaction[], titlePrefix: string) => {
+    if (targetData.length === 0) {
+      alert("Belum ada data transaksi untuk diekspor.");
       return;
     }
 
@@ -221,7 +222,7 @@ export default function LaporanPage() {
       "Total Keuntungan (Rp)",
     ];
 
-    const rows = quarterlyTransactions.map((tx) => [
+    const rows = targetData.map((tx) => [
       `"${tx.id}"`,
       `"${formatDateTime(tx.created_at)}"`,
       `"${tx.payment_method || "Tunai"}"`,
@@ -230,8 +231,7 @@ export default function LaporanPage() {
       tx.total_profit,
     ]);
 
-    const qName = selectedQuarter === "all" ? "Semua_Periode" : `Triwulan_${selectedQuarter}`;
-    const filename = `Laporan_3_Bulanan_${qName}_Tahun_${selectedYear}_Toko_Jaya_Tani.csv`;
+    const filename = `${titlePrefix}_Toko_Jaya_Tani_${new Date().toISOString().slice(0, 10)}.csv`;
 
     const csvContent =
       "data:text/csv;charset=utf-8,\uFEFF" +
@@ -248,16 +248,13 @@ export default function LaporanPage() {
 
   // FILTER RIWAYAT TRANSAKSI TERHUBUNG
   const filteredHistoryTransactions = transactions.filter((tx) => {
-    // 1. Match Search (Nama Pelanggan / ID Nota)
     const matchesSearch =
       (tx.customer_name && tx.customer_name.toLowerCase().includes(searchHistory.toLowerCase())) ||
       tx.id.toLowerCase().includes(searchHistory.toLowerCase());
 
-    // 2. Match Payment Method
     const matchesPayment =
       historyPaymentFilter === "Semua" || tx.payment_method === historyPaymentFilter;
 
-    // 3. Match Date Filter
     let matchesDate = true;
     const txDate = new Date(tx.created_at);
     const now = new Date();
@@ -285,23 +282,62 @@ export default function LaporanPage() {
           </div>
           <h2 className="text-2xl sm:text-3xl font-black">Laporan Penjualan</h2>
           <p className="text-emerald-100 text-sm sm:text-base font-medium mt-0.5">
-            Ringkasan omzet, laporan triwulanan (per 3 bulan), & filter riwayat transaksi.
+            Ekspor laporan kapan saja & pengingat rekap per 3 bulan.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 self-stretch md:self-auto">
-          <div className="bg-emerald-900/80 px-4 py-2 rounded-xl text-amber-300 font-bold text-xs sm:text-sm flex items-center gap-2 border border-emerald-600">
-            <Calendar className="w-4 h-4 text-amber-400" />
-            <span>{formatDateOnly(new Date().toISOString())}</span>
-          </div>
+        <div className="flex flex-wrap items-center gap-2 self-stretch md:self-auto">
+          {/* Tombol Ekspor Bebas Kapan Saja */}
+          <button
+            onClick={() => handleExportCustomCSV(transactions, "Laporan_Penjualan_Lengkap")}
+            className="py-3 px-5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-emerald-950 font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 whitespace-nowrap"
+          >
+            <Download className="w-5 h-5 stroke-[3]" />
+            <span>Ekspor Semua Laporan (.csv)</span>
+          </button>
 
           <button
             onClick={fetchReports}
-            className="py-2 px-3 rounded-xl bg-emerald-950/40 hover:bg-emerald-950/60 border border-emerald-500/50 text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors"
+            className="py-3 px-3 rounded-2xl bg-emerald-950/40 hover:bg-emerald-950/60 border border-emerald-500/50 text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
+      </div>
+
+      {/* NOTIFIKASI PENGINGAT 3 BULAN (TRIWULAN) UNTUK ORANG TUA */}
+      <div className="bg-gradient-to-r from-emerald-900 to-emerald-800 text-white p-5 rounded-3xl border-2 border-amber-400 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-amber-400 text-emerald-950 flex items-center justify-center shrink-0 font-bold shadow-md">
+            <Bell className="w-6 h-6 text-emerald-950 animate-bounce" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-md text-xs font-black bg-amber-400 text-emerald-950 uppercase">
+                Pengingat Rekap 3 Bulan
+              </span>
+              <span className="text-xs font-bold text-amber-300">
+                {getQuarterLabel(currentQuarter.toString())} {currentYear}
+              </span>
+            </div>
+            <h3 className="text-lg sm:text-xl font-black mt-1">
+              {isEndOfQuarterMonth
+                ? "Saatnya Rekap Penjualan 3 Bulanan!"
+                : `Periode Berjalan: ${getQuarterLabel(currentQuarter.toString())}`}
+            </h3>
+            <p className="text-xs sm:text-sm text-emerald-100 font-medium mt-0.5">
+              Orang tua Anda dapat mengeklik tombol ekspor di sebelah kanan kapan saja untuk mengunduh berkas laporan pembukuan Excel 3 bulanan.
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => handleExportCustomCSV(quarterlyTransactions, "Laporan_3_Bulanan")}
+          className="self-stretch md:self-auto py-3 px-5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-emerald-950 font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-xl transition-transform active:scale-95 whitespace-nowrap"
+        >
+          <Download className="w-5 h-5 stroke-[3]" />
+          <span>Ekspor 3 Bulan Ini (.csv)</span>
+        </button>
       </div>
 
       {/* Stat Cards Ringkasan Penjualan Hari Ini */}
@@ -329,7 +365,7 @@ export default function LaporanPage() {
         />
       </div>
 
-      {/* MODUL KHUSUS EKSPOR PER 3 BULAN (TRIWULANAN) */}
+      {/* MODUL KHUSUS FILTER & EKSPOR PER 3 BULAN (TRIWULANAN) */}
       <div className="bg-gradient-to-r from-amber-500 to-amber-600 rounded-3xl p-5 sm:p-6 text-emerald-950 shadow-lg space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-amber-400/80">
           <div className="flex items-center gap-3">
@@ -337,19 +373,19 @@ export default function LaporanPage() {
               <Filter className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-xl font-black">Ekspor Laporan Per 3 Bulan (Triwulan)</h3>
+              <h3 className="text-xl font-black">Filter Laporan 3 Bulanan</h3>
               <p className="text-xs font-bold text-emerald-950/80">
-                Pilih periode 3 bulanan untuk mengunduh rekap pembukuan otomatis.
+                Pilih periode 3 bulan kapan saja untuk mengunduh file rekapitulasi.
               </p>
             </div>
           </div>
 
           <button
-            onClick={handleExportQuarterlyCSV}
+            onClick={() => handleExportCustomCSV(quarterlyTransactions, "Laporan_3_Bulanan")}
             className="py-3 px-5 rounded-2xl bg-emerald-950 hover:bg-emerald-900 text-amber-300 font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-xl transition-all active:scale-95 whitespace-nowrap"
           >
             <Download className="w-5 h-5 stroke-[3] text-amber-400" />
-            <span>Unduh Laporan 3 Bulan (.csv)</span>
+            <span>Unduh Laporan Periode Ini (.csv)</span>
           </button>
         </div>
 
