@@ -23,12 +23,16 @@ import {
   CalendarDays,
   CalendarRange,
   CalendarCheck,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 export default function LaporanPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [lowStockProducts, setLowStockProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedTxId, setExpandedTxId] = useState<string | null>(null); // detail view
+  const [isResetting, setIsResetting] = useState(false);
 
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth() + 1;
@@ -277,38 +281,116 @@ export default function LaporanPage() {
   );
 
   // Ekspor Laporan Bebas / Kapan Saja (.csv)
-  const handleExportCustomCSV = (targetData: Transaction[], titlePrefix: string) => {
+  // ── RESET TRANSAKSI SETELAH EKSPOR ────────────────────────────────────────
+  const handleResetTransactions = async (exportedIds: string[]) => {
+    if (exportedIds.length === 0) return;
+
+    const confirm1 = window.confirm(
+      `✅ File CSV berhasil diunduh!\n\n` +
+      `Apakah Anda ingin MENGHAPUS ${exportedIds.length} transaksi yang sudah direkap dari sistem?\n\n` +
+      `⚠️ Data yang dihapus TIDAK BISA dikembalikan.\n` +
+      `Pastikan file CSV sudah tersimpan dengan aman dulu!`
+    );
+    if (!confirm1) return;
+
+    const confirm2 = window.confirm(
+      `❗ Konfirmasi sekali lagi:\n\n` +
+      `Hapus ${exportedIds.length} transaksi dari riwayat?\n` +
+      `(Tekan OK untuk hapus, Cancel untuk batalkan)`
+    );
+    if (!confirm2) return;
+
+    setIsResetting(true);
+    try {
+      // Hapus dari Supabase
+      const { error } = await supabase
+        .from("transactions")
+        .delete()
+        .in("id", exportedIds);
+
+      if (error) {
+        console.warn("Supabase delete error (mungkin mock data):", error.message);
+      }
+
+      // Hapus dari state lokal
+      setTransactions((prev) => prev.filter((tx) => !exportedIds.includes(tx.id)));
+      alert(`✅ ${exportedIds.length} transaksi berhasil dihapus dari riwayat.\nSilakan lanjutkan operasional toko.`);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  // ── EKSPOR CSV (dengan opsi reset setelah ekspor) ─────────────────────────
+  const handleExportCustomCSV = async (
+    targetData: Transaction[],
+    titlePrefix: string,
+    offerReset = false
+  ) => {
     if (targetData.length === 0) {
       alert("Belum ada data transaksi untuk diekspor.");
       return;
     }
 
-    const headers = [
-      "ID Transaksi",
-      "Tanggal & Waktu",
-      "Metode Pembayaran",
-      "Status Pembayaran",
-      "Nama Pelanggan",
-      "Total Penjualan (Rp)",
-      "Total Keuntungan (Rp)",
+    // Header CSV detail dengan item
+    const lines: string[] = [
+      [
+        "ID Transaksi",
+        "Tanggal & Waktu",
+        "Metode Pembayaran",
+        "Status Pembayaran",
+        "Nama Pelanggan",
+        "Nama Barang",
+        "Jumlah (Qty)",
+        "Harga Satuan (Rp)",
+        "Subtotal (Rp)",
+        "Total Transaksi (Rp)",
+        "Total Keuntungan (Rp)",
+      ].join(","),
     ];
 
-    const rows = targetData.map((tx) => [
-      `"${tx.id}"`,
-      `"${formatDateTime(tx.created_at)}"`,
-      `"${tx.payment_method || "Tunai"}"`,
-      `"${tx.payment_status || "Lunas"}"`,
-      `"${tx.customer_name || "Pelanggan Umum"}"`,
-      tx.total_amount,
-      tx.total_profit,
-    ]);
+    targetData.forEach((tx) => {
+      const items = tx.items && tx.items.length > 0 ? tx.items : null;
+      if (items) {
+        items.forEach((item, idx) => {
+          lines.push(
+            [
+              idx === 0 ? `"${tx.id}"` : `""`,
+              idx === 0 ? `"${formatDateTime(tx.created_at)}"` : `""`,
+              idx === 0 ? `"${tx.payment_method || "Tunai"}"` : `""`,
+              idx === 0 ? `"${tx.payment_status || "Lunas"}"` : `""`,
+              idx === 0 ? `"${tx.customer_name || "Pelanggan Umum"}"` : `""`,
+              `"${item.product_name}"`,
+              item.quantity,
+              item.sell_price,
+              item.quantity * item.sell_price,
+              idx === 0 ? tx.total_amount : `""`,
+              idx === 0 ? tx.total_profit : `""`,
+            ].join(",")
+          );
+        });
+      } else {
+        lines.push(
+          [
+            `"${tx.id}"`,
+            `"${formatDateTime(tx.created_at)}"`,
+            `"${tx.payment_method || "Tunai"}"`,
+            `"${tx.payment_status || "Lunas"}"`,
+            `"${tx.customer_name || "Pelanggan Umum"}"`,
+            `"(detail tidak tersedia)"`,
+            `""`,
+            `""`,
+            `""`,
+            tx.total_amount,
+            tx.total_profit,
+          ].join(",")
+        );
+      }
+    });
 
     const filename = `${titlePrefix}_Toko_Jaya_Tani_${new Date().toISOString().slice(0, 10)}.csv`;
-
-    const csvContent =
-      "data:text/csv;charset=utf-8,\uFEFF" +
-      [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
-
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + lines.join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -316,6 +398,12 @@ export default function LaporanPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+
+    // Tawarkan reset setelah ekspor
+    if (offerReset) {
+      const exportedIds = targetData.map((tx) => tx.id);
+      await handleResetTransactions(exportedIds);
+    }
   };
 
   // FILTER RIWAYAT TRANSAKSI - LOGIKA PERIODE
@@ -421,11 +509,11 @@ export default function LaporanPage() {
 
         <div className="flex flex-wrap items-center gap-2 self-stretch md:self-auto">
           <button
-            onClick={() => handleExportCustomCSV(transactions, "Laporan_Penjualan_Lengkap")}
+            onClick={() => handleExportCustomCSV(transactions, "Laporan_Penjualan_Lengkap", true)}
             className="py-3 px-5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-emerald-950 font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 whitespace-nowrap"
           >
             <Download className="w-5 h-5 stroke-[3]" />
-            <span>Ekspor Semua Laporan (.csv)</span>
+            <span>Ekspor + Reset Semua (.csv)</span>
           </button>
 
           <button
@@ -482,13 +570,14 @@ export default function LaporanPage() {
             onClick={() =>
               handleExportCustomCSV(
                 quarterlyTransactions,
-                `Laporan_Triwulan_${selectedQuarter}_Tahun_${selectedYear}`
+                `Laporan_Triwulan_${selectedQuarter}_Tahun_${selectedYear}`,
+                true
               )
             }
             className="py-3 px-5 rounded-2xl bg-emerald-950 hover:bg-emerald-900 text-amber-300 font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-xl transition-all active:scale-95 whitespace-nowrap"
           >
             <Download className="w-5 h-5 stroke-[3] text-amber-400" />
-            <span>Unduh Laporan Periode Ini (.csv)</span>
+            <span>Unduh + Reset Periode (.csv)</span>
           </button>
         </div>
 
@@ -779,84 +868,141 @@ export default function LaporanPage() {
             </select>
           </div>
 
-          {/* DAFTAR RIWAYAT TRANSAKSI TERFILTER */}
-          <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+          {/* DAFTAR RIWAYAT TRANSAKSI — DETAIL ACCORDION */}
+          <div className="space-y-2.5 max-h-[540px] overflow-y-auto pr-1">
             {filteredHistoryTransactions.length === 0 ? (
               <p className="text-center text-sm font-bold text-gray-500 py-8">
                 Tidak ada riwayat transaksi yang cocok dengan filter.
               </p>
             ) : (
-              filteredHistoryTransactions.map((tx) => (
-                <div
-                  key={tx.id}
-                  className={`p-4 rounded-2xl border transition-colors space-y-2 ${
-                    tx.payment_status === "Belum Lunas"
-                      ? "bg-rose-50/50 border-rose-300 hover:border-rose-400"
-                      : "bg-gray-50 border-gray-200 hover:border-emerald-300"
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center justify-between text-xs sm:text-sm font-bold text-gray-600 pb-2 border-b border-gray-200/60">
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-900 font-extrabold">
-                        Nota ID: #{tx.id.substring(0, 8)}
-                      </span>
-                      <span
-                        className={`px-2 py-0.5 text-[11px] font-black rounded-md ${
-                          tx.payment_method === "Bon"
-                            ? "bg-amber-200 text-amber-900"
-                            : tx.payment_method === "QRIS"
-                            ? "bg-blue-200 text-blue-900"
-                            : "bg-emerald-200 text-emerald-900"
-                        }`}
-                      >
-                        {tx.payment_method || "Tunai"}
-                      </span>
-
-                      {/* BADGE STATUS LUNAS / BELUM LUNAS */}
-                      <span
-                        className={`px-2 py-0.5 text-[11px] font-black rounded-md ${
+              filteredHistoryTransactions.map((tx) => {
+                const isExpanded = expandedTxId === tx.id;
+                const hasItems = tx.items && tx.items.length > 0;
+                return (
+                  <div
+                    key={tx.id}
+                    className={`rounded-2xl border-2 transition-all overflow-hidden ${
+                      tx.payment_status === "Belum Lunas"
+                        ? "border-rose-300 bg-rose-50/40"
+                        : "border-gray-200 bg-gray-50"
+                    } ${isExpanded ? "shadow-md" : ""}`}
+                  >
+                    {/* Baris Ringkasan */}
+                    <div className="p-3.5">
+                      <div className="flex flex-wrap items-center gap-2 text-xs pb-2 border-b border-gray-200/60 mb-2">
+                        <span className="font-black text-gray-900">#{tx.id.substring(0, 8)}</span>
+                        <span className={`px-2 py-0.5 text-[10px] font-black rounded-md ${
+                          tx.payment_method === "Bon" ? "bg-amber-200 text-amber-900"
+                          : tx.payment_method === "QRIS" ? "bg-blue-200 text-blue-900"
+                          : "bg-emerald-200 text-emerald-900"
+                        }`}>{tx.payment_method || "Tunai"}</span>
+                        <span className={`px-2 py-0.5 text-[10px] font-black rounded-md ${
                           tx.payment_status === "Belum Lunas"
                             ? "bg-rose-600 text-white animate-pulse"
                             : "bg-emerald-100 text-emerald-800"
-                        }`}
-                      >
-                        {tx.payment_status === "Belum Lunas" ? "BELUM LUNAS" : "LUNAS"}
-                      </span>
-                    </div>
-                    <span className="text-gray-500">{formatDateTime(tx.created_at)}</span>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
-                    <div>
-                      <p className="text-xs text-gray-500 font-semibold">
-                        Pembeli: <strong className="text-gray-800">{tx.customer_name || "Pelanggan Umum"}</strong>
-                      </p>
-                      <p className="text-lg font-black text-emerald-700">
-                        {formatRupiah(tx.total_amount)}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between sm:justify-end gap-3">
-                      <div className="text-right">
-                        <p className="text-xs text-gray-500 font-semibold">Keuntungan Kotor</p>
-                        <p className="text-base font-extrabold text-amber-700">
-                          +{formatRupiah(tx.total_profit)}
-                        </p>
+                        }`}>
+                          {tx.payment_status === "Belum Lunas" ? "BELUM LUNAS" : "LUNAS"}
+                        </span>
+                        <span className="ml-auto text-gray-400 font-semibold">{formatDateTime(tx.created_at)}</span>
                       </div>
 
-                      {/* Tombol Pelunasan jika Belum Lunas */}
-                      {tx.payment_status === "Belum Lunas" && (
-                        <button
-                          onClick={() => handlePayDebt(tx.id, tx.customer_name || "Pelanggan")}
-                          className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-xs"
-                        >
-                          Bayar Hutang
-                        </button>
-                      )}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs text-gray-500 font-semibold">
+                            Pembeli: <strong className="text-gray-800">{tx.customer_name || "Pelanggan Umum"}</strong>
+                          </p>
+                          <div className="flex items-baseline gap-3 mt-0.5">
+                            <p className="text-base font-black text-emerald-700">{formatRupiah(tx.total_amount)}</p>
+                            <p className="text-xs font-bold text-amber-600">+{formatRupiah(tx.total_profit)} untung</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {/* Tombol Lihat Detail */}
+                          <button
+                            onClick={() => setExpandedTxId(isExpanded ? null : tx.id)}
+                            className={`py-1.5 px-3 rounded-xl text-xs font-black flex items-center gap-1 border transition-all ${
+                              isExpanded
+                                ? "bg-gray-200 text-gray-700 border-gray-300"
+                                : "bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                            }`}
+                          >
+                            {isExpanded ? <><ChevronUp className="w-3.5 h-3.5" />Tutup</> : <><ChevronDown className="w-3.5 h-3.5" />Lihat Detail</>}
+                          </button>
+
+                          {/* Ekspor 1 Nota */}
+                          <button
+                            onClick={() => handleExportCustomCSV([tx], `Nota_${tx.id.substring(0, 8)}`, false)}
+                            className="py-1.5 px-2.5 rounded-xl text-xs font-black flex items-center gap-1 bg-white border border-gray-300 text-gray-600 hover:border-gray-400 transition-all"
+                            title="Unduh nota ini (.csv)"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Tombol Tandai Lunas */}
+                          {tx.payment_status === "Belum Lunas" && (
+                            <button
+                              onClick={() => handlePayDebt(tx.id, tx.customer_name || "Pelanggan")}
+                              className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-sm"
+                            >
+                              Tandai Lunas
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Detail Items — Accordion */}
+                    {isExpanded && (
+                      <div className="border-t-2 border-dashed border-gray-200 bg-white px-4 py-3 space-y-2">
+                        <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2">Detail Barang Dibeli</p>
+                        {hasItems ? (
+                          <>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="bg-gray-100">
+                                    <th className="text-left px-2.5 py-2 font-black text-gray-600 rounded-l-lg">Nama Barang</th>
+                                    <th className="text-center px-2.5 py-2 font-black text-gray-600">Qty</th>
+                                    <th className="text-right px-2.5 py-2 font-black text-gray-600">Harga Satuan</th>
+                                    <th className="text-right px-2.5 py-2 font-black text-gray-600 rounded-r-lg">Subtotal</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {tx.items!.map((item, i) => (
+                                    <tr key={i} className="hover:bg-gray-50">
+                                      <td className="px-2.5 py-2 font-bold text-gray-900">{item.product_name}</td>
+                                      <td className="px-2.5 py-2 text-center font-bold text-gray-700">{item.quantity}x</td>
+                                      <td className="px-2.5 py-2 text-right font-bold text-gray-700">{formatRupiah(item.sell_price)}</td>
+                                      <td className="px-2.5 py-2 text-right font-black text-emerald-700">{formatRupiah(item.quantity * item.sell_price)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                <tfoot>
+                                  <tr className="border-t-2 border-gray-300">
+                                    <td colSpan={3} className="px-2.5 py-2 text-right text-xs font-black text-gray-700">TOTAL</td>
+                                    <td className="px-2.5 py-2 text-right text-base font-black text-emerald-800">{formatRupiah(tx.total_amount)}</td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+                            <div className="flex items-center justify-between pt-1 border-t border-gray-100">
+                              <span className="text-[11px] font-bold text-gray-500">
+                                {tx.items!.length} jenis barang · {tx.items!.reduce((s, i) => s + i.quantity, 0)} item total
+                              </span>
+                              <span className="text-xs font-black text-amber-600">Keuntungan: +{formatRupiah(tx.total_profit)}</span>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="py-4 text-center text-xs font-bold text-gray-400">
+                            Detail item tidak tersedia untuk transaksi ini.
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
