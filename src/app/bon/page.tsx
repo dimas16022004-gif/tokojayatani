@@ -357,12 +357,20 @@ export default function BonPage() {
         <div className="bg-gradient-to-r from-rose-700 to-rose-950 rounded-3xl p-6 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-amber-300 text-sm font-bold uppercase tracking-wider mb-1">
-              <BookOpen className="w-5 h-5" /> Manajemen Bon & Piutang
+              <BookOpen className="w-5 h-5" /> Catatan Piutang Pelanggan
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black">Buku Catatan Bon Pelanggan</h2>
+            <h2 className="text-2xl sm:text-3xl font-black">Buku Piutang / Catatan Bon</h2>
             <p className="text-rose-100 text-sm sm:text-base font-medium mt-0.5">
-              Kelola semua transaksi bon, update status lunas, & ekspor catatan kapan saja.
+              Catat siapa yang berhutang, update status pelunasan, & lihat riwayat bon kapan saja.
             </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="px-3 py-1 bg-white/20 rounded-xl text-xs font-bold">
+                📝 Bon dicatat saat barang diambil
+              </span>
+              <span className="px-3 py-1 bg-emerald-400/30 rounded-xl text-xs font-bold">
+                ✅ Klik &quot;Tandai Lunas&quot; saat hutang dibayar
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <button

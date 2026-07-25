@@ -200,15 +200,24 @@ export default function LaporanPage() {
     }
   };
 
-  // Ringkasan Hari Ini
+  // Ringkasan Hari Ini — BON hanya terhitung jika SUDAH LUNAS
   const todayStr = new Date().toDateString();
   const todayTransactions = transactions.filter(
     (tx) => new Date(tx.created_at).toDateString() === todayStr
   );
 
-  const todayRevenue = todayTransactions.reduce((sum, tx) => sum + Number(tx.total_amount), 0);
-  const todayProfit = todayTransactions.reduce((sum, tx) => sum + Number(tx.total_profit), 0);
-  const todayCount = todayTransactions.length;
+  // Hanya transaksi yang sudah dibayar lunas (Tunai, QRIS, atau Bon Lunas)
+  const todayPaidTransactions = todayTransactions.filter(
+    (tx) => tx.payment_method !== "Bon" || tx.payment_status === "Lunas"
+  );
+
+  const todayRevenue = todayPaidTransactions.reduce((sum, tx) => sum + Number(tx.total_amount), 0);
+  const todayProfit = todayPaidTransactions.reduce((sum, tx) => sum + Number(tx.total_profit), 0);
+  const todayCount = todayPaidTransactions.length;
+  const todayPendingBon = todayTransactions.filter(
+    (tx) => tx.payment_method === "Bon" && tx.payment_status === "Belum Lunas"
+  );
+  const todayPendingBonAmount = todayPendingBon.reduce((sum, tx) => sum + Number(tx.total_amount), 0);
 
   const tunaiTotal = todayTransactions
     .filter((tx) => tx.payment_method === "Tunai")
@@ -218,18 +227,12 @@ export default function LaporanPage() {
     .filter((tx) => tx.payment_method === "QRIS")
     .reduce((sum, tx) => sum + Number(tx.total_amount), 0);
 
-  const bonTotal = todayTransactions
-    .filter((tx) => tx.payment_method === "Bon")
+  // Bon belum lunas — ditampilkan sebagai piutang, bukan pendapatan
+  const bonLunasTotal = todayTransactions
+    .filter((tx) => tx.payment_method === "Bon" && tx.payment_status === "Lunas")
     .reduce((sum, tx) => sum + Number(tx.total_amount), 0);
 
-  // DAFTAR PELANGGAN BERHUTANG (BELUM LUNAS)
-  const unpaidDebts = transactions.filter(
-    (tx) => tx.payment_method === "Bon" && tx.payment_status === "Belum Lunas"
-  );
-  const totalUnpaidDebtAmount = unpaidDebts.reduce(
-    (sum, tx) => sum + Number(tx.total_amount),
-    0
-  );
+  const bonBelumLunasTotal = todayPendingBonAmount;
 
   // Filter Transaksi 3 Bulanan (Triwulan)
   const getQuarterRange = (quarter: number, year: number) => {
@@ -537,38 +540,47 @@ export default function LaporanPage() {
 
       {/* Breakdown Rincian Metode Pembayaran Hari Ini */}
       <div className="bg-white rounded-3xl p-5 border-2 border-emerald-100 shadow-sm space-y-3">
-        <h3 className="font-extrabold text-gray-900 text-base">
-          Rincian Pembayaran Hari Ini ({formatDateOnly(new Date().toISOString())})
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <CreditCard className="w-5 h-5 text-emerald-700" />
-              <div>
-                <p className="text-xs font-bold text-emerald-800 uppercase">Tunai (Cash)</p>
-                <p className="text-lg font-black text-emerald-900">{formatRupiah(tunaiTotal)}</p>
-              </div>
+        <div className="flex items-center justify-between">
+          <h3 className="font-extrabold text-gray-900 text-base">
+            Rincian Pembayaran Hari Ini ({formatDateOnly(new Date().toISOString())})
+          </h3>
+          <span className="text-[11px] font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded-lg">
+            ✅ Omzet = Tunai + QRIS + Bon Lunas
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200">
+            <div className="flex items-center gap-2 mb-1">
+              <CreditCard className="w-4 h-4 text-emerald-700" />
+              <p className="text-xs font-bold text-emerald-800 uppercase">Tunai</p>
             </div>
+            <p className="text-lg font-black text-emerald-900">{formatRupiah(tunaiTotal)}</p>
           </div>
 
-          <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <QrCode className="w-5 h-5 text-blue-700" />
-              <div>
-                <p className="text-xs font-bold text-blue-800 uppercase">QRIS / Transfer</p>
-                <p className="text-lg font-black text-blue-900">{formatRupiah(qrisTotal)}</p>
-              </div>
+          <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200">
+            <div className="flex items-center gap-2 mb-1">
+              <QrCode className="w-4 h-4 text-blue-700" />
+              <p className="text-xs font-bold text-blue-800 uppercase">QRIS</p>
             </div>
+            <p className="text-lg font-black text-blue-900">{formatRupiah(qrisTotal)}</p>
           </div>
 
-          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <FileText className="w-5 h-5 text-amber-700" />
-              <div>
-                <p className="text-xs font-bold text-amber-800 uppercase">Bon / Piutang</p>
-                <p className="text-lg font-black text-amber-900">{formatRupiah(bonTotal)}</p>
-              </div>
+          <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300">
+            <div className="flex items-center gap-2 mb-1">
+              <FileText className="w-4 h-4 text-emerald-700" />
+              <p className="text-xs font-bold text-emerald-800 uppercase">Bon ✅ Lunas</p>
             </div>
+            <p className="text-lg font-black text-emerald-900">{formatRupiah(bonLunasTotal)}</p>
+            <p className="text-[10px] font-bold text-emerald-600">Masuk ke omzet</p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-rose-50 border-2 border-rose-300">
+            <div className="flex items-center gap-2 mb-1">
+              <FileText className="w-4 h-4 text-rose-700" />
+              <p className="text-xs font-bold text-rose-800 uppercase">Bon ❌ Piutang</p>
+            </div>
+            <p className="text-lg font-black text-rose-700">{formatRupiah(bonBelumLunasTotal)}</p>
+            <p className="text-[10px] font-bold text-rose-500">Belum masuk omzet</p>
           </div>
         </div>
       </div>

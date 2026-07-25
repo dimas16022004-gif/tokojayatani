@@ -22,8 +22,8 @@ export default function Navbar() {
     },
     {
       href: "/bon",
-      label: "Catatan Bon",
-      mobileLabel: "Bon",
+      label: "Catatan Piutang",
+      mobileLabel: "Piutang",
       icon: BookOpen,
     },
     {
