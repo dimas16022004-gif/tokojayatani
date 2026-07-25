@@ -156,6 +156,14 @@ export default function BonPage() {
   const fetchBon = async () => {
     setLoading(true);
     try {
+      // 1. Sync data: Pastikan transaksi Bon yang belum ada paid_at memiliki status Belum Lunas di DB
+      await supabase
+        .from("transactions")
+        .update({ payment_status: "Belum Lunas" })
+        .eq("payment_method", "Bon")
+        .is("paid_at", null);
+
+      // 2. Fetch data Bon
       const { data, error } = await supabase
         .from("transactions")
         .select("*, transaction_items(*)")
@@ -163,15 +171,11 @@ export default function BonPage() {
         .order("created_at", { ascending: false });
 
       if (!error && data) {
-        const formatted = data.map((tx: any) => {
-          const isBonUnpaid = tx.payment_method === "Bon" && !tx.paid_at;
-          const status = isBonUnpaid ? "Belum Lunas" : (tx.payment_status || "Lunas");
-          return {
-            ...tx,
-            payment_status: status,
-            items: tx.items && tx.items.length > 0 ? tx.items : (tx.transaction_items || []),
-          };
-        });
+        const formatted = data.map((tx: any) => ({
+          ...tx,
+          payment_status: tx.payment_status || "Belum Lunas",
+          items: tx.items && tx.items.length > 0 ? tx.items : (tx.transaction_items || []),
+        }));
         setAllBon(formatted as Transaction[]);
       } else {
         setAllBon([]);
@@ -210,14 +214,7 @@ export default function BonPage() {
       console.error(err);
     }
 
-    // Update lokal langsung
-    setAllBon((prev) =>
-      prev.map((tx) =>
-        tx.id === id
-          ? { ...tx, customer_name: newName, payment_status: newStatus, paid_at: paidAt || undefined }
-          : tx
-      )
-    );
+    await fetchBon();
     setEditTarget(null);
   };
 

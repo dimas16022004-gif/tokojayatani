@@ -75,21 +75,25 @@ export default function LaporanPage() {
   const fetchReports = async () => {
     setLoading(true);
     try {
+      // 1. Sync data: Pastikan transaksi Bon yang belum ada paid_at memiliki status Belum Lunas di DB
+      await supabase
+        .from("transactions")
+        .update({ payment_status: "Belum Lunas" })
+        .eq("payment_method", "Bon")
+        .is("paid_at", null);
+
+      // 2. Fetch transaksi
       const { data: txData, error: txError } = await supabase
         .from("transactions")
         .select("*, transaction_items(*)")
         .order("created_at", { ascending: false });
 
       if (!txError && txData) {
-        const formattedTx = txData.map((tx: any) => {
-          const isBonUnpaid = tx.payment_method === "Bon" && !tx.paid_at;
-          const status = isBonUnpaid ? "Belum Lunas" : (tx.payment_status || "Lunas");
-          return {
-            ...tx,
-            payment_status: status,
-            items: tx.items && tx.items.length > 0 ? tx.items : (tx.transaction_items || []),
-          };
-        });
+        const formattedTx = txData.map((tx: any) => ({
+          ...tx,
+          payment_status: tx.payment_status || "Lunas",
+          items: tx.items && tx.items.length > 0 ? tx.items : (tx.transaction_items || []),
+        }));
         setTransactions(formattedTx as Transaction[]);
       } else {
         setTransactions([]);
@@ -126,23 +130,18 @@ export default function LaporanPage() {
     if (!confirmPay) return;
 
     try {
+      const nowIso = new Date().toISOString();
       const { error } = await supabase
         .from("transactions")
-        .update({ payment_status: "Lunas", paid_at: new Date().toISOString() })
+        .update({ payment_status: "Lunas", paid_at: nowIso })
         .eq("id", txId);
 
       if (error) {
-        console.warn("Update Supabase error, update state lokal:", error.message);
+        console.warn("Update Supabase error:", error.message);
       }
       
-      setTransactions((prev) =>
-        prev.map((tx) =>
-          tx.id === txId
-            ? { ...tx, payment_status: "Lunas", paid_at: new Date().toISOString() }
-            : tx
-        )
-      );
-      alert(`Hutang atas nama "${customerName}" berhasil ditandai LUNAS!`);
+      await fetchReports();
+      alert(`✅ Hutang atas nama "${customerName}" berhasil ditandai LUNAS!`);
     } catch (err) {
       console.error(err);
     }
