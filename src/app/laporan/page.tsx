@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Transaction, Product, PaymentStatus } from "@/lib/types";
+import { useState, useEffect, useMemo } from "react";
+import { Transaction, Product } from "@/lib/types";
 import { supabase, INITIAL_MOCK_PRODUCTS } from "@/lib/supabaseClient";
 import { formatRupiah, formatDateTime, formatDateOnly } from "@/lib/utils";
 import StatCard from "@/components/StatCard";
@@ -11,7 +11,6 @@ import {
   DollarSign,
   Receipt,
   AlertTriangle,
-  Calendar,
   RefreshCw,
   ShoppingBag,
   Download,
@@ -25,6 +24,11 @@ import {
   BookOpen,
   User,
   Clock,
+  CalendarDays,
+  CalendarRange,
+  CalendarCheck,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 export default function LaporanPage() {
@@ -48,8 +52,32 @@ export default function LaporanPage() {
   // Filter Riwayat Transaksi Interaktif
   const [searchHistory, setSearchHistory] = useState("");
   const [historyPaymentFilter, setHistoryPaymentFilter] = useState<string>("Semua");
-  const [historyDateFilter, setHistoryDateFilter] = useState<string>("semua");
-  const [historyDebtFilter, setHistoryDebtFilter] = useState<string>("semua"); // "semua", "belum_lunas", "lunas"
+  const [historyDebtFilter, setHistoryDebtFilter] = useState<string>("semua");
+
+  // Filter Periode: mode = "semua" | "hari_ini" | "kemarin" | "minggu_ini" | "minggu_lalu" | "bulan_ini" | "bulan_lalu" | "custom_hari" | "custom_minggu" | "custom_bulan"
+  const [periodMode, setPeriodMode] = useState<string>("semua");
+
+  // Custom Hari: pilih tanggal spesifik
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const [customDay, setCustomDay] = useState<string>(todayISO);
+
+  // Custom Minggu: pilih tahun + nomor minggu
+  const getISOWeek = (d: Date): number => {
+    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    const dayNum = date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    return Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  };
+  const currentWeekNum = getISOWeek(new Date());
+  const [customWeek, setCustomWeek] = useState<string>(
+    `${currentYear}-W${String(currentWeekNum).padStart(2, "0")}`
+  );
+
+  // Custom Bulan: pilih tahun-bulan
+  const [customMonth, setCustomMonth] = useState<string>(
+    `${currentYear}-${String(currentMonth).padStart(2, "0")}`
+  );
 
   // Initial Mock Transactions jika DB kosong
   const mockTransactions: Transaction[] = [
@@ -299,38 +327,92 @@ export default function LaporanPage() {
     document.body.removeChild(link);
   };
 
-  // FILTER RIWAYAT TRANSAKSI TERHUBUNG
-  const filteredHistoryTransactions = transactions.filter((tx) => {
-    const matchesSearch =
-      (tx.customer_name && tx.customer_name.toLowerCase().includes(searchHistory.toLowerCase())) ||
-      tx.id.toLowerCase().includes(searchHistory.toLowerCase());
+  // FILTER RIWAYAT TRANSAKSI - LOGIKA PERIODE
+  const filteredHistoryTransactions = useMemo(() => {
+    return transactions.filter((tx) => {
+      // Filter Pencarian Nama/ID
+      const matchesSearch =
+        !searchHistory ||
+        (tx.customer_name &&
+          tx.customer_name.toLowerCase().includes(searchHistory.toLowerCase())) ||
+        tx.id.toLowerCase().includes(searchHistory.toLowerCase());
 
-    const matchesPayment =
-      historyPaymentFilter === "Semua" || tx.payment_method === historyPaymentFilter;
+      // Filter Metode Pembayaran
+      const matchesPayment =
+        historyPaymentFilter === "Semua" || tx.payment_method === historyPaymentFilter;
 
-    let matchesDebtStatus = true;
-    if (historyDebtFilter === "belum_lunas") {
-      matchesDebtStatus = tx.payment_status === "Belum Lunas";
-    } else if (historyDebtFilter === "lunas") {
-      matchesDebtStatus = tx.payment_status === "Lunas";
-    }
+      // Filter Status Hutang
+      let matchesDebt = true;
+      if (historyDebtFilter === "belum_lunas") {
+        matchesDebt = tx.payment_status === "Belum Lunas";
+      } else if (historyDebtFilter === "lunas") {
+        matchesDebt = tx.payment_status === "Lunas";
+      }
 
-    let matchesDate = true;
-    const txDate = new Date(tx.created_at);
-    const now = new Date();
+      // Filter Periode
+      let matchesPeriod = true;
+      const txDate = new Date(tx.created_at);
+      const now = new Date();
 
-    if (historyDateFilter === "hari_ini") {
-      matchesDate = txDate.toDateString() === now.toDateString();
-    } else if (historyDateFilter === "7_hari") {
-      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      matchesDate = txDate >= sevenDaysAgo;
-    } else if (historyDateFilter === "bulan_ini") {
-      matchesDate =
-        txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
-    }
+      if (periodMode === "hari_ini") {
+        matchesPeriod = txDate.toDateString() === now.toDateString();
+      } else if (periodMode === "kemarin") {
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        matchesPeriod = txDate.toDateString() === yesterday.toDateString();
+      } else if (periodMode === "minggu_ini") {
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay());
+        startOfWeek.setHours(0, 0, 0, 0);
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        endOfWeek.setHours(23, 59, 59, 999);
+        matchesPeriod = txDate >= startOfWeek && txDate <= endOfWeek;
+      } else if (periodMode === "minggu_lalu") {
+        const startOfLastWeek = new Date(now);
+        startOfLastWeek.setDate(now.getDate() - now.getDay() - 7);
+        startOfLastWeek.setHours(0, 0, 0, 0);
+        const endOfLastWeek = new Date(startOfLastWeek);
+        endOfLastWeek.setDate(startOfLastWeek.getDate() + 6);
+        endOfLastWeek.setHours(23, 59, 59, 999);
+        matchesPeriod = txDate >= startOfLastWeek && txDate <= endOfLastWeek;
+      } else if (periodMode === "bulan_ini") {
+        matchesPeriod =
+          txDate.getMonth() === now.getMonth() &&
+          txDate.getFullYear() === now.getFullYear();
+      } else if (periodMode === "bulan_lalu") {
+        const lastMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+        const lastMonthYear =
+          now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+        matchesPeriod =
+          txDate.getMonth() === lastMonth &&
+          txDate.getFullYear() === lastMonthYear;
+      } else if (periodMode === "custom_hari" && customDay) {
+        const selectedDate = new Date(customDay);
+        matchesPeriod =
+          txDate.getDate() === selectedDate.getDate() &&
+          txDate.getMonth() === selectedDate.getMonth() &&
+          txDate.getFullYear() === selectedDate.getFullYear();
+      } else if (periodMode === "custom_minggu" && customWeek) {
+        // customWeek format: "2026-W30"
+        const [wyear, wnum] = customWeek.split("-W").map(Number);
+        const txWeekNum = getISOWeek(txDate);
+        matchesPeriod = txDate.getFullYear() === wyear && txWeekNum === wnum;
+      } else if (periodMode === "custom_bulan" && customMonth) {
+        // customMonth format: "2026-07"
+        const [myear, mmonth] = customMonth.split("-").map(Number);
+        matchesPeriod =
+          txDate.getFullYear() === myear && txDate.getMonth() + 1 === mmonth;
+      }
 
-    return matchesSearch && matchesPayment && matchesDebtStatus && matchesDate;
-  });
+      return matchesSearch && matchesPayment && matchesDebt && matchesPeriod;
+    });
+  }, [transactions, searchHistory, historyPaymentFilter, historyDebtFilter, periodMode, customDay, customWeek, customMonth]);
+
+  // Ringkasan Statistik Periode yang Difilter
+  const filteredRevenue = filteredHistoryTransactions.reduce((s, tx) => s + Number(tx.total_amount), 0);
+  const filteredProfit = filteredHistoryTransactions.reduce((s, tx) => s + Number(tx.total_profit), 0);
+
 
   return (
     <div className="space-y-6">
@@ -710,70 +792,151 @@ export default function LaporanPage() {
 
         {/* Kolom Kanan: Riwayat Transaksi Terakhir dengan FILTER INTERAKTIF */}
         <div className="lg:col-span-2 bg-white rounded-3xl p-5 border-2 border-emerald-100 shadow-sm space-y-4">
+          {/* Header Riwayat */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-emerald-100">
             <div className="flex items-center gap-2 text-emerald-900 font-black text-lg">
               <ShoppingBag className="w-6 h-6 text-emerald-700" />
               <h3>Riwayat Transaksi</h3>
             </div>
-            <span className="text-xs font-bold text-gray-500">
-              Menampilkan {filteredHistoryTransactions.length} dari {transactions.length} Transaksi
-            </span>
+            <button
+              onClick={() => handleExportCustomCSV(filteredHistoryTransactions, "Riwayat_Transaksi")}
+              className="py-2 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs flex items-center gap-1.5 shadow-sm transition-all active:scale-95 whitespace-nowrap"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Unduh Riwayat (.csv)
+            </button>
           </div>
 
-          {/* BARIS FILTER RIWAYAT TRANSAKSI */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 bg-emerald-50/60 p-3 rounded-2xl border border-emerald-100">
+          {/* FILTER PERIODE — TAB PILLS */}
+          <div className="space-y-2">
+            <p className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-1">
+              <CalendarDays className="w-3.5 h-3.5" /> Filter Periode
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { id: "semua", label: "Semua" },
+                { id: "hari_ini", label: "Hari Ini" },
+                { id: "kemarin", label: "Kemarin" },
+                { id: "minggu_ini", label: "Minggu Ini" },
+                { id: "minggu_lalu", label: "Minggu Lalu" },
+                { id: "bulan_ini", label: "Bulan Ini" },
+                { id: "bulan_lalu", label: "Bulan Lalu" },
+                { id: "custom_hari", label: "📅 Pilih Hari" },
+                { id: "custom_minggu", label: "📆 Pilih Minggu" },
+                { id: "custom_bulan", label: "🗓️ Pilih Bulan" },
+              ].map(({ id, label }) => (
+                <button
+                  key={id}
+                  onClick={() => setPeriodMode(id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${
+                    periodMode === id
+                      ? "bg-emerald-700 text-white border-emerald-700 shadow-md"
+                      : "bg-white text-gray-600 border-gray-300 hover:border-emerald-500 hover:text-emerald-800"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Input Dinamis untuk Custom Hari / Minggu / Bulan */}
+            {periodMode === "custom_hari" && (
+              <div className="flex items-center gap-2 mt-1.5 p-3 bg-emerald-50 rounded-2xl border border-emerald-200">
+                <CalendarCheck className="w-4 h-4 text-emerald-700 shrink-0" />
+                <label className="text-xs font-black text-emerald-800 shrink-0">Pilih Tanggal:</label>
+                <input
+                  type="date"
+                  value={customDay}
+                  onChange={(e) => setCustomDay(e.target.value)}
+                  max={todayISO}
+                  className="px-3 py-1.5 rounded-xl border-2 border-emerald-300 bg-white text-xs font-bold text-gray-900 focus:outline-hidden focus:border-emerald-600"
+                />
+              </div>
+            )}
+
+            {periodMode === "custom_minggu" && (
+              <div className="flex items-center gap-2 mt-1.5 p-3 bg-blue-50 rounded-2xl border border-blue-200">
+                <CalendarRange className="w-4 h-4 text-blue-700 shrink-0" />
+                <label className="text-xs font-black text-blue-800 shrink-0">Pilih Minggu:</label>
+                <input
+                  type="week"
+                  value={customWeek}
+                  onChange={(e) => setCustomWeek(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl border-2 border-blue-300 bg-white text-xs font-bold text-gray-900 focus:outline-hidden focus:border-blue-600"
+                />
+                <span className="text-[11px] font-bold text-blue-700">(Senin s/d Minggu)</span>
+              </div>
+            )}
+
+            {periodMode === "custom_bulan" && (
+              <div className="flex items-center gap-2 mt-1.5 p-3 bg-amber-50 rounded-2xl border border-amber-200">
+                <CalendarDays className="w-4 h-4 text-amber-700 shrink-0" />
+                <label className="text-xs font-black text-amber-800 shrink-0">Pilih Bulan:</label>
+                <input
+                  type="month"
+                  value={customMonth}
+                  onChange={(e) => setCustomMonth(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl border-2 border-amber-300 bg-white text-xs font-bold text-gray-900 focus:outline-hidden focus:border-amber-600"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Ringkasan Statistik Periode yang Difilter */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-center">
+              <p className="text-[10px] font-black uppercase text-emerald-700">Total Transaksi</p>
+              <p className="text-lg font-black text-emerald-900">{filteredHistoryTransactions.length}</p>
+              <p className="text-[10px] font-bold text-gray-400">nota</p>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-center">
+              <p className="text-[10px] font-black uppercase text-blue-700">Total Omzet</p>
+              <p className="text-base font-black text-blue-900">{formatRupiah(filteredRevenue)}</p>
+              <p className="text-[10px] font-bold text-gray-400">penjualan</p>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-center">
+              <p className="text-[10px] font-black uppercase text-amber-700">Total Untung</p>
+              <p className="text-base font-black text-amber-900">{formatRupiah(filteredProfit)}</p>
+              <p className="text-[10px] font-bold text-gray-400">kotor</p>
+            </div>
+          </div>
+
+          {/* FILTER PENCARIAN, PEMBAYARAN & HUTANG */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-gray-50 p-3 rounded-2xl border border-gray-200">
             {/* Search Box */}
-            <div className="relative sm:col-span-1">
+            <div className="relative">
               <input
                 type="text"
-                placeholder="Cari pembeli / ID..."
+                placeholder="Cari nama pembeli / ID nota..."
                 value={searchHistory}
                 onChange={(e) => setSearchHistory(e.target.value)}
-                className="w-full pl-8 pr-2 py-2 rounded-xl bg-white border border-gray-300 text-xs font-bold text-gray-900 focus:border-emerald-600 focus:outline-hidden"
+                className="w-full pl-8 pr-3 py-2.5 rounded-xl bg-white border border-gray-300 text-xs font-bold text-gray-900 focus:border-emerald-600 focus:outline-hidden"
               />
-              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5" />
+              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-3" />
             </div>
 
             {/* Filter Status Hutang */}
-            <div>
-              <select
-                value={historyDebtFilter}
-                onChange={(e) => setHistoryDebtFilter(e.target.value)}
-                className="w-full px-2 py-2 rounded-xl bg-white border border-rose-300 text-xs font-bold text-rose-900 focus:border-rose-600 focus:outline-hidden"
-              >
-                <option value="semua">Semua Status Hutang</option>
-                <option value="belum_lunas">❌ Belum Lunas (Bon)</option>
-                <option value="lunas">✅ Lunas</option>
-              </select>
-            </div>
+            <select
+              value={historyDebtFilter}
+              onChange={(e) => setHistoryDebtFilter(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl bg-white border border-rose-300 text-xs font-bold text-rose-900 focus:border-rose-600 focus:outline-hidden"
+            >
+              <option value="semua">🗒️ Semua Status</option>
+              <option value="belum_lunas">❌ Bon Belum Lunas</option>
+              <option value="lunas">✅ Sudah Lunas</option>
+            </select>
 
             {/* Filter Metode Pembayaran */}
-            <div>
-              <select
-                value={historyPaymentFilter}
-                onChange={(e) => setHistoryPaymentFilter(e.target.value)}
-                className="w-full px-2 py-2 rounded-xl bg-white border border-gray-300 text-xs font-bold text-gray-900 focus:border-emerald-600 focus:outline-hidden"
-              >
-                <option value="Semua">Semua Pembayaran</option>
-                <option value="Tunai">Tunai (Cash)</option>
-                <option value="QRIS">QRIS / Transfer</option>
-                <option value="Bon">Bon / Piutang</option>
-              </select>
-            </div>
-
-            {/* Filter Waktu */}
-            <div>
-              <select
-                value={historyDateFilter}
-                onChange={(e) => setHistoryDateFilter(e.target.value)}
-                className="w-full px-2 py-2 rounded-xl bg-white border border-gray-300 text-xs font-bold text-gray-900 focus:border-emerald-600 focus:outline-hidden"
-              >
-                <option value="semua">Semua Waktu</option>
-                <option value="hari_ini">Hari Ini</option>
-                <option value="7_hari">7 Hari Terakhir</option>
-                <option value="bulan_ini">Bulan Ini</option>
-              </select>
-            </div>
+            <select
+              value={historyPaymentFilter}
+              onChange={(e) => setHistoryPaymentFilter(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl bg-white border border-gray-300 text-xs font-bold text-gray-900 focus:border-emerald-600 focus:outline-hidden"
+            >
+              <option value="Semua">💳 Semua Pembayaran</option>
+              <option value="Tunai">💵 Tunai (Cash)</option>
+              <option value="QRIS">📱 QRIS / Transfer</option>
+              <option value="Bon">📄 Bon / Piutang</option>
+            </select>
           </div>
 
           {/* DAFTAR RIWAYAT TRANSAKSI TERFILTER */}
