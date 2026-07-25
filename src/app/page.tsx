@@ -195,6 +195,25 @@ export default function KasirPage() {
           })
         );
       } else {
+        // Enforce Bon status to Belum Lunas in case RPC function on Supabase Cloud defaults to Lunas
+        if (paymentMethod === "Bon") {
+          const { data: latestTx } = await supabase
+            .from("transactions")
+            .select("id")
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .single();
+
+          if (latestTx?.id) {
+            await supabase
+              .from("transactions")
+              .update({
+                payment_status: "Belum Lunas",
+                paid_at: null,
+              })
+              .eq("id", latestTx.id);
+          }
+        }
         await fetchProducts();
       }
       return true;
