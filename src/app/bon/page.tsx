@@ -159,7 +159,7 @@ export default function BonPage() {
       // 1. Sync data: Pastikan transaksi Bon yang belum ada paid_at memiliki status Belum Lunas di DB
       await supabase
         .from("transactions")
-        .update({ payment_status: "Belum Lunas" })
+        .update({ payment_status: "Belum Lunas", paid_at: null })
         .eq("payment_method", "Bon")
         .is("paid_at", null);
 
@@ -189,6 +189,8 @@ export default function BonPage() {
 
   useEffect(() => {
     fetchBon();
+    window.addEventListener("focus", fetchBon);
+    return () => window.removeEventListener("focus", fetchBon);
   }, []);
 
   // ─── Update Status & Nama ──────────────────────────────────────────────────

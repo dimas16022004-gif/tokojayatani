@@ -75,14 +75,14 @@ export default function LaporanPage() {
   const fetchReports = async () => {
     setLoading(true);
     try {
-      // 1. Sync data: Pastikan transaksi Bon yang belum ada paid_at memiliki status Belum Lunas di DB
+      // 1. Sync data: Pastikan transaksi Bon yang belum dilunasi memiliki status Belum Lunas di DB
       await supabase
         .from("transactions")
-        .update({ payment_status: "Belum Lunas" })
+        .update({ payment_status: "Belum Lunas", paid_at: null })
         .eq("payment_method", "Bon")
         .is("paid_at", null);
 
-      // 2. Fetch transaksi
+      // 2. Fetch transaksi dari DB
       const { data: txData, error: txError } = await supabase
         .from("transactions")
         .select("*, transaction_items(*)")
@@ -117,9 +117,10 @@ export default function LaporanPage() {
     }
   };
 
-
   useEffect(() => {
     fetchReports();
+    window.addEventListener("focus", fetchReports);
+    return () => window.removeEventListener("focus", fetchReports);
   }, []);
 
   // Pelunasan Hutang (Tandai Lunas)
