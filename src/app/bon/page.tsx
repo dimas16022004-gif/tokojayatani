@@ -24,57 +24,6 @@ import {
   TrendingDown,
 } from "lucide-react";
 
-// ─── Mock data jika DB kosong ────────────────────────────────────────────────
-const MOCK_DEBTS: Transaction[] = [
-  {
-    id: "bon-001",
-    total_amount: 145000,
-    total_profit: 25000,
-    payment_method: "Bon",
-    payment_status: "Belum Lunas",
-    customer_name: "Pak Haji Ahmad",
-    created_at: new Date(Date.now() - 3600000 * 24 * 2).toISOString(),
-  },
-  {
-    id: "bon-002",
-    total_amount: 350000,
-    total_profit: 70000,
-    payment_method: "Bon",
-    payment_status: "Belum Lunas",
-    customer_name: "Pak Mamat Tani",
-    created_at: new Date(Date.now() - 3600000 * 24 * 5).toISOString(),
-  },
-  {
-    id: "bon-003",
-    total_amount: 88000,
-    total_profit: 12000,
-    payment_method: "Bon",
-    payment_status: "Lunas",
-    customer_name: "Bu Sari",
-    paid_at: new Date(Date.now() - 3600000 * 24 * 1).toISOString(),
-    created_at: new Date(Date.now() - 3600000 * 24 * 7).toISOString(),
-  },
-  {
-    id: "bon-004",
-    total_amount: 220000,
-    total_profit: 35000,
-    payment_method: "Bon",
-    payment_status: "Belum Lunas",
-    customer_name: "Pak Joko",
-    created_at: new Date(Date.now() - 3600000 * 24 * 1).toISOString(),
-  },
-  {
-    id: "bon-005",
-    total_amount: 510000,
-    total_profit: 80000,
-    payment_method: "Bon",
-    payment_status: "Lunas",
-    customer_name: "Pak Haji Ahmad",
-    paid_at: new Date(Date.now() - 3600000 * 24 * 10).toISOString(),
-    created_at: new Date(Date.now() - 3600000 * 24 * 15).toISOString(),
-  },
-];
-
 // ─── Edit Modal ───────────────────────────────────────────────────────────────
 interface EditModalProps {
   tx: Transaction;
@@ -213,13 +162,13 @@ export default function BonPage() {
         .eq("payment_method", "Bon")
         .order("created_at", { ascending: false });
 
-      if (error || !data || data.length === 0) {
-        setAllBon(MOCK_DEBTS);
-      } else {
+      if (!error && data) {
         setAllBon(data as Transaction[]);
+      } else {
+        setAllBon([]);
       }
     } catch {
-      setAllBon(MOCK_DEBTS);
+      setAllBon([]);
     } finally {
       setLoading(false);
     }

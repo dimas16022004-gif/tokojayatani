@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { Transaction, Product } from "@/lib/types";
-import { supabase, INITIAL_MOCK_PRODUCTS } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 import { formatRupiah, formatDateTime, formatDateOnly } from "@/lib/utils";
 import StatCard from "@/components/StatCard";
 import {
@@ -71,72 +71,6 @@ export default function LaporanPage() {
     `${currentYear}-${String(currentMonth).padStart(2, "0")}`
   );
 
-  // Initial Mock Transactions jika DB kosong
-  const mockTransactions: Transaction[] = [
-    {
-      id: "tx-1",
-      total_amount: 350000,
-      total_profit: 65000,
-      payment_method: "Tunai",
-      payment_status: "Lunas",
-      customer_name: "Pelanggan Umum",
-      created_at: new Date().toISOString(),
-      items: [
-        {
-          id: "ti-1",
-          transaction_id: "tx-1",
-          product_name: "Pupuk NPK Mutiara 16-16-16 1kg",
-          quantity: 2,
-          buy_price: 18000,
-          sell_price: 23000,
-          profit: 10000,
-          created_at: new Date().toISOString(),
-        },
-      ],
-    },
-    {
-      id: "tx-2",
-      total_amount: 145000,
-      total_profit: 25000,
-      payment_method: "Bon",
-      payment_status: "Belum Lunas",
-      customer_name: "Pak Haji Ahmad",
-      created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-      items: [
-        {
-          id: "ti-3",
-          transaction_id: "tx-2",
-          product_name: "Pupuk Urea Subur 50kg",
-          quantity: 1,
-          buy_price: 120000,
-          sell_price: 145000,
-          profit: 25000,
-          created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-        },
-      ],
-    },
-    {
-      id: "tx-3",
-      total_amount: 350000,
-      total_profit: 70000,
-      payment_method: "Bon",
-      payment_status: "Belum Lunas",
-      customer_name: "Pak Mamat Tani",
-      created_at: new Date(Date.now() - 3600000 * 24 * 3).toISOString(),
-      items: [
-        {
-          id: "ti-4",
-          transaction_id: "tx-3",
-          product_name: "Sprayer Elektrik Hama 16 Liter",
-          quantity: 1,
-          buy_price: 280000,
-          sell_price: 350000,
-          profit: 70000,
-          created_at: new Date(Date.now() - 3600000 * 24 * 3).toISOString(),
-        },
-      ],
-    },
-  ];
 
   const fetchReports = async () => {
     setLoading(true);
@@ -146,29 +80,30 @@ export default function LaporanPage() {
         .select("*, transaction_items(*)")
         .order("created_at", { ascending: false });
 
-      if (txError || !txData || txData.length === 0) {
-        setTransactions(mockTransactions);
-      } else {
+      if (!txError && txData) {
         setTransactions(txData as Transaction[]);
+      } else {
+        setTransactions([]);
       }
 
       const { data: prodData, error: prodError } = await supabase
         .from("products")
         .select("*");
 
-      if (prodError || !prodData || prodData.length === 0) {
-        setLowStockProducts(INITIAL_MOCK_PRODUCTS.filter((p) => p.stock <= p.min_stock));
-      } else {
+      if (!prodError && prodData) {
         setLowStockProducts((prodData as Product[]).filter((p) => p.stock <= p.min_stock));
+      } else {
+        setLowStockProducts([]);
       }
     } catch (err) {
       console.error(err);
-      setTransactions(mockTransactions);
-      setLowStockProducts(INITIAL_MOCK_PRODUCTS.filter((p) => p.stock <= p.min_stock));
+      setTransactions([]);
+      setLowStockProducts([]);
     } finally {
       setLoading(false);
     }
   };
+
 
   useEffect(() => {
     fetchReports();

@@ -18,7 +18,7 @@ export default function KasirPage() {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Load produk dari Supabase atau Mock Fallback Data
+  // Load produk dari Supabase
   const fetchProducts = async () => {
     setLoading(true);
     setDbError(null);
@@ -28,15 +28,17 @@ export default function KasirPage() {
         .select("*")
         .order("name", { ascending: true });
 
-      if (error || !data || data.length === 0) {
-        setProducts(INITIAL_MOCK_PRODUCTS);
-        if (error) setDbError("Menggunakan mode demo (Hubungkan Supabase via .env.local untuk database live).");
+      if (error) {
+        // Koneksi berhasil tapi ada error query
+        setProducts([]);
+        setDbError("Gagal memuat produk dari database. Periksa koneksi Supabase.");
       } else {
-        setProducts(data as Product[]);
+        setProducts((data as Product[]) || []);
       }
     } catch (err) {
       console.error(err);
-      setProducts(INITIAL_MOCK_PRODUCTS);
+      setProducts([]);
+      setDbError("Tidak dapat terhubung ke database.");
     } finally {
       setLoading(false);
     }

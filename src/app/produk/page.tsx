@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Product } from "@/lib/types";
-import { supabase, INITIAL_MOCK_PRODUCTS } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 import ProductTable from "@/components/ProductTable";
 import ProductModal from "@/components/ProductModal";
 import StatCard from "@/components/StatCard";
@@ -14,7 +14,6 @@ export default function ProdukPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
-  // Fetch Produk dari Supabase / Mock Data
   const fetchProducts = async () => {
     setLoading(true);
     try {
@@ -23,14 +22,14 @@ export default function ProdukPage() {
         .select("*")
         .order("name", { ascending: true });
 
-      if (error || !data || data.length === 0) {
-        setProducts(INITIAL_MOCK_PRODUCTS);
-      } else {
+      if (!error && data) {
         setProducts(data as Product[]);
+      } else {
+        setProducts([]);
       }
     } catch (err) {
       console.error(err);
-      setProducts(INITIAL_MOCK_PRODUCTS);
+      setProducts([]);
     } finally {
       setLoading(false);
     }
