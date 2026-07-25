@@ -119,72 +119,43 @@ export default function KasirPage() {
 
   const handleClearCart = () => setCart([]);
 
-  // Eksekusi Transaksi (Supabase RPC `process_transaction`)
+  // Eksekusi Transaksi (Direct Insert ke Table Transactions & Transaction_Items)
   const handleProcessTransaction = async (
     paymentAmount: number,
     paymentMethod: PaymentMethod,
     customerName: string
   ): Promise<boolean> => {
     try {
-      const payloadItems = cart.map((item) => ({
-        product_id: item.product.id,
-        quantity: item.quantity,
-      }));
+      const totalAmount = cart.reduce(
+        (sum, item) => sum + item.product.sell_price * item.quantity,
+        0
+      );
+      const totalProfit = cart.reduce(
+        (sum, item) =>
+          sum + (item.product.sell_price - item.product.buy_price) * item.quantity,
+        0
+      );
+      const paymentStatus = paymentMethod === "Bon" ? "Belum Lunas" : "Lunas";
 
-      // Coba panggil RPC Supabase dengan parameter baru
-      const { data, error } = await supabase.rpc("process_transaction", {
-        items: payloadItems,
-        p_payment_method: paymentMethod,
-        p_customer_name: customerName || "Pelanggan Umum",
-      });
+      // 1. Insert Transaksi ke tabel transactions
+      const { data: newTx, error: txErr } = await supabase
+        .from("transactions")
+        .insert([
+          {
+            total_amount: totalAmount,
+            total_profit: totalProfit,
+            payment_method: paymentMethod,
+            payment_status: paymentStatus,
+            customer_name: customerName || "Pelanggan Umum",
+            paid_at: paymentStatus === "Lunas" ? new Date().toISOString() : null,
+          },
+        ])
+        .select()
+        .single();
 
-      if (error) {
-        console.warn("RPC Supabase error, mencoba insert langsung ke tabel transactions:", error.message);
-        
-        // Fallback: Insert langsung ke tabel transactions & transaction_items jika RPC belum di-update di Supabase Cloud
-        const totalAmount = cart.reduce((sum, item) => sum + item.product.sell_price * item.quantity, 0);
-        const totalProfit = cart.reduce((sum, item) => sum + (item.product.sell_price - item.product.buy_price) * item.quantity, 0);
-        const paymentStatus = paymentMethod === "Bon" ? "Belum Lunas" : "Lunas";
-
-        const { data: newTx, error: txErr } = await supabase
-          .from("transactions")
-          .insert([
-            {
-              total_amount: totalAmount,
-              total_profit: totalProfit,
-              payment_method: paymentMethod,
-              payment_status: paymentStatus,
-              customer_name: customerName || "Pelanggan Umum",
-              paid_at: paymentStatus === "Lunas" ? new Date().toISOString() : null,
-            },
-          ])
-          .select()
-          .single();
-
-        if (txErr) {
-          console.error("Gagal insert transactions secara langsung:", txErr);
-        } else if (newTx && newTx.id) {
-          const itemPayload = cart.map((item) => ({
-            transaction_id: newTx.id,
-            product_id: item.product.id,
-            product_name: item.product.name,
-            quantity: item.quantity,
-            buy_price: item.product.buy_price,
-            sell_price: item.product.sell_price,
-            profit: (item.product.sell_price - item.product.buy_price) * item.quantity,
-          }));
-
-          await supabase.from("transaction_items").insert(itemPayload);
-
-          // Update stok produk
-          for (const item of cart) {
-            await supabase
-              .from("products")
-              .update({ stock: Math.max(0, item.product.stock - item.quantity) })
-              .eq("id", item.product.id);
-          }
-        }
-
+      if (txErr) {
+        console.error("Gagal insert transactions:", txErr);
+        // Jika gagal insert Supabase, update stok lokal
         setProducts((prevProducts) =>
           prevProducts.map((p) => {
             const cartItem = cart.find((item) => item.product.id === p.id);
@@ -194,28 +165,40 @@ export default function KasirPage() {
             return p;
           })
         );
-      } else {
-        // Enforce Bon status to Belum Lunas in case RPC function on Supabase Cloud defaults to Lunas
-        if (paymentMethod === "Bon") {
-          const { data: latestTx } = await supabase
-            .from("transactions")
-            .select("id")
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .single();
-
-          if (latestTx?.id) {
-            await supabase
-              .from("transactions")
-              .update({
-                payment_status: "Belum Lunas",
-                paid_at: null,
-              })
-              .eq("id", latestTx.id);
-          }
-        }
-        await fetchProducts();
+        return true;
       }
+
+      if (newTx && newTx.id) {
+        // 2. Insert Detail Barang ke tabel transaction_items
+        const itemPayload = cart.map((item) => ({
+          transaction_id: newTx.id,
+          product_id: item.product.id,
+          product_name: item.product.name,
+          quantity: item.quantity,
+          buy_price: item.product.buy_price,
+          sell_price: item.product.sell_price,
+          profit: (item.product.sell_price - item.product.buy_price) * item.quantity,
+        }));
+
+        const { error: itemsErr } = await supabase
+          .from("transaction_items")
+          .insert(itemPayload);
+
+        if (itemsErr) {
+          console.error("Gagal insert transaction_items:", itemsErr);
+        }
+
+        // 3. Kurangi Stok Produk di Database
+        for (const item of cart) {
+          const newStock = Math.max(0, item.product.stock - item.quantity);
+          await supabase
+            .from("products")
+            .update({ stock: newStock })
+            .eq("id", item.product.id);
+        }
+      }
+
+      await fetchProducts();
       return true;
     } catch (err) {
       console.error("Gagal memproses transaksi:", err);

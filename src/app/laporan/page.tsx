@@ -81,10 +81,15 @@ export default function LaporanPage() {
         .order("created_at", { ascending: false });
 
       if (!txError && txData) {
-        const formattedTx = txData.map((tx: any) => ({
-          ...tx,
-          items: tx.items && tx.items.length > 0 ? tx.items : (tx.transaction_items || []),
-        }));
+        const formattedTx = txData.map((tx: any) => {
+          const isBonUnpaid = tx.payment_method === "Bon" && !tx.paid_at;
+          const status = isBonUnpaid ? "Belum Lunas" : (tx.payment_status || "Lunas");
+          return {
+            ...tx,
+            payment_status: status,
+            items: tx.items && tx.items.length > 0 ? tx.items : (tx.transaction_items || []),
+          };
+        });
         setTransactions(formattedTx as Transaction[]);
       } else {
         setTransactions([]);

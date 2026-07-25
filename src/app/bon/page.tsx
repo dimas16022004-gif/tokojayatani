@@ -163,10 +163,15 @@ export default function BonPage() {
         .order("created_at", { ascending: false });
 
       if (!error && data) {
-        const formatted = data.map((tx: any) => ({
-          ...tx,
-          items: tx.items && tx.items.length > 0 ? tx.items : (tx.transaction_items || []),
-        }));
+        const formatted = data.map((tx: any) => {
+          const isBonUnpaid = tx.payment_method === "Bon" && !tx.paid_at;
+          const status = isBonUnpaid ? "Belum Lunas" : (tx.payment_status || "Lunas");
+          return {
+            ...tx,
+            payment_status: status,
+            items: tx.items && tx.items.length > 0 ? tx.items : (tx.transaction_items || []),
+          };
+        });
         setAllBon(formatted as Transaction[]);
       } else {
         setAllBon([]);
