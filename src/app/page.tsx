@@ -139,7 +139,52 @@ export default function KasirPage() {
       });
 
       if (error) {
-        console.warn("RPC Supabase error, mengupdate stok lokal:", error.message);
+        console.warn("RPC Supabase error, mencoba insert langsung ke tabel transactions:", error.message);
+        
+        // Fallback: Insert langsung ke tabel transactions & transaction_items jika RPC belum di-update di Supabase Cloud
+        const totalAmount = cart.reduce((sum, item) => sum + item.product.sell_price * item.quantity, 0);
+        const totalProfit = cart.reduce((sum, item) => sum + (item.product.sell_price - item.product.buy_price) * item.quantity, 0);
+        const paymentStatus = paymentMethod === "Bon" ? "Belum Lunas" : "Lunas";
+
+        const { data: newTx, error: txErr } = await supabase
+          .from("transactions")
+          .insert([
+            {
+              total_amount: totalAmount,
+              total_profit: totalProfit,
+              payment_method: paymentMethod,
+              payment_status: paymentStatus,
+              customer_name: customerName || "Pelanggan Umum",
+              paid_at: paymentStatus === "Lunas" ? new Date().toISOString() : null,
+            },
+          ])
+          .select()
+          .single();
+
+        if (txErr) {
+          console.error("Gagal insert transactions secara langsung:", txErr);
+        } else if (newTx && newTx.id) {
+          const itemPayload = cart.map((item) => ({
+            transaction_id: newTx.id,
+            product_id: item.product.id,
+            product_name: item.product.name,
+            quantity: item.quantity,
+            buy_price: item.product.buy_price,
+            sell_price: item.product.sell_price,
+            profit: (item.product.sell_price - item.product.buy_price) * item.quantity,
+          }));
+
+          await supabase.from("transaction_items").insert(itemPayload);
+
+          // Update stok produk
+          for (const item of cart) {
+            await supabase
+              .from("products")
+              .update({ stock: Math.max(0, item.product.stock - item.quantity) })
+              .eq("id", item.product.id);
+          }
+        }
+
         setProducts((prevProducts) =>
           prevProducts.map((p) => {
             const cartItem = cart.find((item) => item.product.id === p.id);
@@ -155,16 +200,7 @@ export default function KasirPage() {
       return true;
     } catch (err) {
       console.error("Gagal memproses transaksi:", err);
-      setProducts((prevProducts) =>
-        prevProducts.map((p) => {
-          const cartItem = cart.find((item) => item.product.id === p.id);
-          if (cartItem) {
-            return { ...p, stock: Math.max(0, p.stock - cartItem.quantity) };
-          }
-          return p;
-        })
-      );
-      return true;
+      return false;
     }
   };
 
