@@ -1,4 +1,5 @@
 export type PaymentMethod = "Tunai" | "QRIS" | "Bon";
+export type PaymentStatus = "Lunas" | "Belum Lunas";
 
 export interface Product {
   id: string;
@@ -23,7 +24,9 @@ export interface Transaction {
   total_amount: number;
   total_profit: number;
   payment_method: PaymentMethod;
+  payment_status: PaymentStatus;
   customer_name?: string;
+  paid_at?: string;
   created_at: string;
   items?: TransactionItem[];
 }

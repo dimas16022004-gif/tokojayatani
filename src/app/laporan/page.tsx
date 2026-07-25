@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Transaction, Product } from "@/lib/types";
+import { Transaction, Product, PaymentStatus } from "@/lib/types";
 import { supabase, INITIAL_MOCK_PRODUCTS } from "@/lib/supabaseClient";
 import { formatRupiah, formatDateTime, formatDateOnly } from "@/lib/utils";
 import StatCard from "@/components/StatCard";
@@ -21,6 +21,10 @@ import {
   Filter,
   Search,
   Bell,
+  CheckCircle2,
+  BookOpen,
+  User,
+  Clock,
 } from "lucide-react";
 
 export default function LaporanPage() {
@@ -33,10 +37,8 @@ export default function LaporanPage() {
   const currentMonth = new Date().getMonth() + 1; // 1-12
   const currentQuarter = Math.ceil(currentMonth / 3); // 1, 2, 3, 4
 
-  // Pengingat di Awal Bulan ke-4 (Bulan 4/April, Bulan 7/Juli, Bulan 10/Oktober, Bulan 1/Januari)
+  // Pengingat di Awal Bulan ke-4 (Bulan 1, 4, 7, 10)
   const isQuarterReminderMonth = [1, 4, 7, 10].includes(currentMonth);
-
-  // Menentukan triwulan sebelumnya yang baru saja selesai untuk direkap
   const previousQuarter = currentQuarter === 1 ? 4 : currentQuarter - 1;
   const previousQuarterYear = currentQuarter === 1 ? currentYear - 1 : currentYear;
 
@@ -47,6 +49,7 @@ export default function LaporanPage() {
   const [searchHistory, setSearchHistory] = useState("");
   const [historyPaymentFilter, setHistoryPaymentFilter] = useState<string>("Semua");
   const [historyDateFilter, setHistoryDateFilter] = useState<string>("semua");
+  const [historyDebtFilter, setHistoryDebtFilter] = useState<string>("semua"); // "semua", "belum_lunas", "lunas"
 
   // Initial Mock Transactions jika DB kosong
   const mockTransactions: Transaction[] = [
@@ -55,6 +58,7 @@ export default function LaporanPage() {
       total_amount: 350000,
       total_profit: 65000,
       payment_method: "Tunai",
+      payment_status: "Lunas",
       customer_name: "Pelanggan Umum",
       created_at: new Date().toISOString(),
       items: [
@@ -68,16 +72,6 @@ export default function LaporanPage() {
           profit: 10000,
           created_at: new Date().toISOString(),
         },
-        {
-          id: "ti-2",
-          transaction_id: "tx-1",
-          product_name: "Sprayer Elektrik Hama 16 Liter",
-          quantity: 1,
-          buy_price: 280000,
-          sell_price: 304000,
-          profit: 55000,
-          created_at: new Date().toISOString(),
-        },
       ],
     },
     {
@@ -85,6 +79,7 @@ export default function LaporanPage() {
       total_amount: 145000,
       total_profit: 25000,
       payment_method: "Bon",
+      payment_status: "Belum Lunas",
       customer_name: "Pak Haji Ahmad",
       created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
       items: [
@@ -102,12 +97,24 @@ export default function LaporanPage() {
     },
     {
       id: "tx-3",
-      total_amount: 230000,
-      total_profit: 45000,
-      payment_method: "QRIS",
-      customer_name: "Bu Siti Tani",
-      created_at: new Date(Date.now() - 3600000 * 24).toISOString(),
-      items: [],
+      total_amount: 350000,
+      total_profit: 70000,
+      payment_method: "Bon",
+      payment_status: "Belum Lunas",
+      customer_name: "Pak Mamat Tani",
+      created_at: new Date(Date.now() - 3600000 * 24 * 3).toISOString(),
+      items: [
+        {
+          id: "ti-4",
+          transaction_id: "tx-3",
+          product_name: "Sprayer Elektrik Hama 16 Liter",
+          quantity: 1,
+          buy_price: 280000,
+          sell_price: 350000,
+          profit: 70000,
+          created_at: new Date(Date.now() - 3600000 * 24 * 3).toISOString(),
+        },
+      ],
     },
   ];
 
@@ -147,7 +154,37 @@ export default function LaporanPage() {
     fetchReports();
   }, []);
 
-  // Hitung Ringkasan Penjualan Hari Ini
+  // Pelunasan Hutang (Tandai Lunas)
+  const handlePayDebt = async (txId: string, customerName: string) => {
+    const confirmPay = window.confirm(
+      `Tandai hutang atas nama "${customerName}" sebagai SUDAH LUNAS?`
+    );
+    if (!confirmPay) return;
+
+    try {
+      const { error } = await supabase
+        .from("transactions")
+        .update({ payment_status: "Lunas", paid_at: new Date().toISOString() })
+        .eq("id", txId);
+
+      if (error) {
+        console.warn("Update Supabase error, update state lokal:", error.message);
+      }
+      
+      setTransactions((prev) =>
+        prev.map((tx) =>
+          tx.id === txId
+            ? { ...tx, payment_status: "Lunas", paid_at: new Date().toISOString() }
+            : tx
+        )
+      );
+      alert(`Hutang atas nama "${customerName}" berhasil ditandai LUNAS!`);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Ringkasan Hari Ini
   const todayStr = new Date().toDateString();
   const todayTransactions = transactions.filter(
     (tx) => new Date(tx.created_at).toDateString() === todayStr
@@ -168,6 +205,15 @@ export default function LaporanPage() {
   const bonTotal = todayTransactions
     .filter((tx) => tx.payment_method === "Bon")
     .reduce((sum, tx) => sum + Number(tx.total_amount), 0);
+
+  // DAFTAR PELANGGAN BERHUTANG (BELUM LUNAS)
+  const unpaidDebts = transactions.filter(
+    (tx) => tx.payment_method === "Bon" && tx.payment_status === "Belum Lunas"
+  );
+  const totalUnpaidDebtAmount = unpaidDebts.reduce(
+    (sum, tx) => sum + Number(tx.total_amount),
+    0
+  );
 
   // Filter Transaksi 3 Bulanan (Triwulan)
   const getQuarterRange = (quarter: number, year: number) => {
@@ -222,6 +268,7 @@ export default function LaporanPage() {
       "ID Transaksi",
       "Tanggal & Waktu",
       "Metode Pembayaran",
+      "Status Pembayaran",
       "Nama Pelanggan",
       "Total Penjualan (Rp)",
       "Total Keuntungan (Rp)",
@@ -231,6 +278,7 @@ export default function LaporanPage() {
       `"${tx.id}"`,
       `"${formatDateTime(tx.created_at)}"`,
       `"${tx.payment_method || "Tunai"}"`,
+      `"${tx.payment_status || "Lunas"}"`,
       `"${tx.customer_name || "Pelanggan Umum"}"`,
       tx.total_amount,
       tx.total_profit,
@@ -260,6 +308,13 @@ export default function LaporanPage() {
     const matchesPayment =
       historyPaymentFilter === "Semua" || tx.payment_method === historyPaymentFilter;
 
+    let matchesDebtStatus = true;
+    if (historyDebtFilter === "belum_lunas") {
+      matchesDebtStatus = tx.payment_status === "Belum Lunas";
+    } else if (historyDebtFilter === "lunas") {
+      matchesDebtStatus = tx.payment_status === "Lunas";
+    }
+
     let matchesDate = true;
     const txDate = new Date(tx.created_at);
     const now = new Date();
@@ -274,7 +329,7 @@ export default function LaporanPage() {
         txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
     }
 
-    return matchesSearch && matchesPayment && matchesDate;
+    return matchesSearch && matchesPayment && matchesDebtStatus && matchesDate;
   });
 
   return (
@@ -285,14 +340,13 @@ export default function LaporanPage() {
           <div className="flex items-center gap-2 text-amber-300 text-sm font-bold uppercase tracking-wider mb-1">
             <BarChart3 className="w-5 h-5" /> Laporan Ringkas & Pembukuan
           </div>
-          <h2 className="text-2xl sm:text-3xl font-black">Laporan Penjualan</h2>
+          <h2 className="text-2xl sm:text-3xl font-black">Laporan Penjualan & Buku Hutang</h2>
           <p className="text-emerald-100 text-sm sm:text-base font-medium mt-0.5">
-            Ekspor laporan kapan saja & pengingat rekap di awal bulan ke-4.
+            Pantau hutang pelanggan, ekspor laporan per 3 bulan, & pelunasan bon.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 self-stretch md:self-auto">
-          {/* Tombol Ekspor Bebas Kapan Saja */}
           <button
             onClick={() => handleExportCustomCSV(transactions, "Laporan_Penjualan_Lengkap")}
             className="py-3 px-5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-emerald-950 font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 whitespace-nowrap"
@@ -310,7 +364,89 @@ export default function LaporanPage() {
         </div>
       </div>
 
-      {/* NOTIFIKASI PENGINGAT DI AWAL BULAN KE-4 (BULAN 1, 4, 7, 10) */}
+      {/* MODUL KHUSUS BUKU CATATAN PIUTANG / HUTANG PELANGGAN */}
+      <div className="bg-white rounded-3xl p-5 sm:p-6 border-4 border-rose-300 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-rose-200">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-rose-600 text-white flex items-center justify-center font-bold shadow-md">
+              <BookOpen className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-xl sm:text-2xl font-black text-gray-900">
+                Buku Catatan Hutang Pelanggan (Bon)
+              </h3>
+              <p className="text-xs sm:text-sm font-bold text-rose-700">
+                Daftar pembeli yang memiliki bon dan belum melunasi pembayaran.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-rose-50 border-2 border-rose-200 p-3.5 rounded-2xl text-right shrink-0">
+            <span className="text-xs font-bold text-rose-800 uppercase block">Total Piutang Belum Dibayar:</span>
+            <span className="text-xl sm:text-2xl font-black text-rose-600 block">
+              {formatRupiah(totalUnpaidDebtAmount)}
+            </span>
+            <span className="text-[11px] font-bold text-gray-500 block">
+              ({unpaidDebts.length} Pelanggan Berhutang)
+            </span>
+          </div>
+        </div>
+
+        {/* Tabel / Daftar Pelanggan Berhutang */}
+        <div className="space-y-3">
+          {unpaidDebts.length === 0 ? (
+            <div className="p-8 text-center bg-emerald-50 rounded-2xl border border-emerald-200 text-emerald-900 font-bold">
+              <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto mb-2" />
+              <p className="text-base font-black">Alhamdulillah! Tidak Ada Hutang Pelanggan yang Tertunggak.</p>
+              <p className="text-xs font-medium text-emerald-700 mt-0.5">Semua transaksi bon telah lunas terbayar.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-1">
+              {unpaidDebts.map((tx) => (
+                <div
+                  key={tx.id}
+                  className="p-4 rounded-2xl bg-rose-50/60 border-2 border-rose-200 hover:border-rose-400 transition-all flex flex-col justify-between gap-3 shadow-xs"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-base text-gray-900 flex items-center gap-1.5">
+                        <User className="w-4 h-4 text-rose-600" /> {tx.customer_name || "Pelanggan Umumm"}
+                      </span>
+                      <span className="px-2.5 py-1 text-xs font-black bg-rose-600 text-white rounded-lg animate-pulse">
+                        BELUM LUNAS
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-gray-600 font-medium flex items-center justify-between border-t border-rose-200/60 pt-1.5">
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-gray-400" /> {formatDateTime(tx.created_at)}
+                      </span>
+                      <span className="font-mono text-gray-500">#{tx.id.substring(0, 8)}</span>
+                    </div>
+
+                    <div className="flex items-baseline justify-between pt-1">
+                      <span className="text-xs font-bold text-gray-500 uppercase">Sisa Total Hutang:</span>
+                      <span className="text-xl font-black text-rose-700">
+                        {formatRupiah(tx.total_amount)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handlePayDebt(tx.id, tx.customer_name || "Pelanggan")}
+                    className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm flex items-center justify-center gap-2 shadow-md transition-transform active:scale-95"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Tandai Lunas (Bayar Hutang)</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* NOTIFIKASI PENGINGAT DI AWAL BULAN KE-4 */}
       <div
         className={`p-5 rounded-3xl border-2 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all ${
           isQuarterReminderMonth
@@ -585,17 +721,30 @@ export default function LaporanPage() {
           </div>
 
           {/* BARIS FILTER RIWAYAT TRANSAKSI */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-emerald-50/60 p-3 rounded-2xl border border-emerald-100">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 bg-emerald-50/60 p-3 rounded-2xl border border-emerald-100">
             {/* Search Box */}
-            <div className="relative">
+            <div className="relative sm:col-span-1">
               <input
                 type="text"
-                placeholder="Cari pembeli / ID nota..."
+                placeholder="Cari pembeli / ID..."
                 value={searchHistory}
                 onChange={(e) => setSearchHistory(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-xl bg-white border border-gray-300 text-xs font-bold text-gray-900 focus:border-emerald-600 focus:outline-hidden"
+                className="w-full pl-8 pr-2 py-2 rounded-xl bg-white border border-gray-300 text-xs font-bold text-gray-900 focus:border-emerald-600 focus:outline-hidden"
               />
-              <Search className="w-4 h-4 text-gray-400 absolute left-2.5 top-2.5" />
+              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5" />
+            </div>
+
+            {/* Filter Status Hutang */}
+            <div>
+              <select
+                value={historyDebtFilter}
+                onChange={(e) => setHistoryDebtFilter(e.target.value)}
+                className="w-full px-2 py-2 rounded-xl bg-white border border-rose-300 text-xs font-bold text-rose-900 focus:border-rose-600 focus:outline-hidden"
+              >
+                <option value="semua">Semua Status Hutang</option>
+                <option value="belum_lunas">❌ Belum Lunas (Bon)</option>
+                <option value="lunas">✅ Lunas</option>
+              </select>
             </div>
 
             {/* Filter Metode Pembayaran */}
@@ -603,7 +752,7 @@ export default function LaporanPage() {
               <select
                 value={historyPaymentFilter}
                 onChange={(e) => setHistoryPaymentFilter(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-white border border-gray-300 text-xs font-bold text-gray-900 focus:border-emerald-600 focus:outline-hidden"
+                className="w-full px-2 py-2 rounded-xl bg-white border border-gray-300 text-xs font-bold text-gray-900 focus:border-emerald-600 focus:outline-hidden"
               >
                 <option value="Semua">Semua Pembayaran</option>
                 <option value="Tunai">Tunai (Cash)</option>
@@ -617,9 +766,9 @@ export default function LaporanPage() {
               <select
                 value={historyDateFilter}
                 onChange={(e) => setHistoryDateFilter(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-white border border-gray-300 text-xs font-bold text-gray-900 focus:border-emerald-600 focus:outline-hidden"
+                className="w-full px-2 py-2 rounded-xl bg-white border border-gray-300 text-xs font-bold text-gray-900 focus:border-emerald-600 focus:outline-hidden"
               >
-                <option value="semua">Semua Rentang Waktu</option>
+                <option value="semua">Semua Waktu</option>
                 <option value="hari_ini">Hari Ini</option>
                 <option value="7_hari">7 Hari Terakhir</option>
                 <option value="bulan_ini">Bulan Ini</option>
@@ -637,7 +786,11 @@ export default function LaporanPage() {
               filteredHistoryTransactions.map((tx) => (
                 <div
                   key={tx.id}
-                  className="p-4 rounded-2xl bg-gray-50 border border-gray-200 hover:border-emerald-300 transition-colors space-y-2"
+                  className={`p-4 rounded-2xl border transition-colors space-y-2 ${
+                    tx.payment_status === "Belum Lunas"
+                      ? "bg-rose-50/50 border-rose-300 hover:border-rose-400"
+                      : "bg-gray-50 border-gray-200 hover:border-emerald-300"
+                  }`}
                 >
                   <div className="flex flex-wrap items-center justify-between text-xs sm:text-sm font-bold text-gray-600 pb-2 border-b border-gray-200/60">
                     <div className="flex items-center gap-2">
@@ -655,11 +808,22 @@ export default function LaporanPage() {
                       >
                         {tx.payment_method || "Tunai"}
                       </span>
+
+                      {/* BADGE STATUS LUNAS / BELUM LUNAS */}
+                      <span
+                        className={`px-2 py-0.5 text-[11px] font-black rounded-md ${
+                          tx.payment_status === "Belum Lunas"
+                            ? "bg-rose-600 text-white animate-pulse"
+                            : "bg-emerald-100 text-emerald-800"
+                        }`}
+                      >
+                        {tx.payment_status === "Belum Lunas" ? "BELUM LUNAS" : "LUNAS"}
+                      </span>
                     </div>
                     <span className="text-gray-500">{formatDateTime(tx.created_at)}</span>
                   </div>
 
-                  <div className="flex items-center justify-between pt-1">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
                     <div>
                       <p className="text-xs text-gray-500 font-semibold">
                         Pembeli: <strong className="text-gray-800">{tx.customer_name || "Pelanggan Umum"}</strong>
@@ -669,11 +833,23 @@ export default function LaporanPage() {
                       </p>
                     </div>
 
-                    <div className="text-right">
-                      <p className="text-xs text-gray-500 font-semibold">Keuntungan Kotor</p>
-                      <p className="text-base font-extrabold text-amber-700">
-                        +{formatRupiah(tx.total_profit)}
-                      </p>
+                    <div className="flex items-center justify-between sm:justify-end gap-3">
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500 font-semibold">Keuntungan Kotor</p>
+                        <p className="text-base font-extrabold text-amber-700">
+                          +{formatRupiah(tx.total_profit)}
+                        </p>
+                      </div>
+
+                      {/* Tombol Pelunasan jika Belum Lunas */}
+                      {tx.payment_status === "Belum Lunas" && (
+                        <button
+                          onClick={() => handlePayDebt(tx.id, tx.customer_name || "Pelanggan")}
+                          className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-xs"
+                        >
+                          Bayar Hutang
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
