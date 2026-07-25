@@ -81,7 +81,11 @@ export default function LaporanPage() {
         .order("created_at", { ascending: false });
 
       if (!txError && txData) {
-        setTransactions(txData as Transaction[]);
+        const formattedTx = txData.map((tx: any) => ({
+          ...tx,
+          items: tx.items && tx.items.length > 0 ? tx.items : (tx.transaction_items || []),
+        }));
+        setTransactions(formattedTx as Transaction[]);
       } else {
         setTransactions([]);
       }
@@ -286,9 +290,13 @@ export default function LaporanPage() {
     ];
 
     targetData.forEach((tx) => {
-      const items = tx.items && tx.items.length > 0 ? tx.items : null;
+      const items = (tx.items && tx.items.length > 0)
+        ? tx.items
+        : ((tx as any).transaction_items && (tx as any).transaction_items.length > 0)
+        ? (tx as any).transaction_items
+        : null;
       if (items) {
-        items.forEach((item, idx) => {
+        items.forEach((item: any, idx: number) => {
           lines.push(
             [
               idx === 0 ? `"${tx.id}"` : `""`,

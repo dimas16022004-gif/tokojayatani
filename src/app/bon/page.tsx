@@ -163,7 +163,11 @@ export default function BonPage() {
         .order("created_at", { ascending: false });
 
       if (!error && data) {
-        setAllBon(data as Transaction[]);
+        const formatted = data.map((tx: any) => ({
+          ...tx,
+          items: tx.items && tx.items.length > 0 ? tx.items : (tx.transaction_items || []),
+        }));
+        setAllBon(formatted as Transaction[]);
       } else {
         setAllBon([]);
       }
@@ -608,6 +612,19 @@ function BonCard({
           </div>
         )}
       </div>
+
+      {/* Rincian Barang Bon */}
+      {tx.items && tx.items.length > 0 && (
+        <div className="bg-white/80 rounded-xl p-2 border border-gray-200/80 space-y-1 text-xs">
+          <p className="text-[10px] font-black text-gray-400 uppercase">Barang Dibeli:</p>
+          {tx.items.map((item, i) => (
+            <div key={i} className="flex justify-between font-bold text-gray-700">
+              <span className="truncate max-w-[170px]">{item.product_name} x{item.quantity}</span>
+              <span className="text-gray-900">{formatRupiah(item.sell_price * item.quantity)}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex gap-2 pt-1">
