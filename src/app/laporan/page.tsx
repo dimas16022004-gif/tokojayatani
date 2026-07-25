@@ -21,7 +21,6 @@ import {
   Filter,
   Search,
   Bell,
-  CheckCircle2,
 } from "lucide-react";
 
 export default function LaporanPage() {
@@ -33,7 +32,13 @@ export default function LaporanPage() {
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth() + 1; // 1-12
   const currentQuarter = Math.ceil(currentMonth / 3); // 1, 2, 3, 4
-  const isEndOfQuarterMonth = [3, 6, 9, 12].includes(currentMonth);
+
+  // Pengingat di Awal Bulan ke-4 (Bulan 4/April, Bulan 7/Juli, Bulan 10/Oktober, Bulan 1/Januari)
+  const isQuarterReminderMonth = [1, 4, 7, 10].includes(currentMonth);
+
+  // Menentukan triwulan sebelumnya yang baru saja selesai untuk direkap
+  const previousQuarter = currentQuarter === 1 ? 4 : currentQuarter - 1;
+  const previousQuarterYear = currentQuarter === 1 ? currentYear - 1 : currentYear;
 
   const [selectedQuarter, setSelectedQuarter] = useState<string>(currentQuarter.toString());
   const [selectedYear, setSelectedYear] = useState<string>(currentYear.toString());
@@ -282,7 +287,7 @@ export default function LaporanPage() {
           </div>
           <h2 className="text-2xl sm:text-3xl font-black">Laporan Penjualan</h2>
           <p className="text-emerald-100 text-sm sm:text-base font-medium mt-0.5">
-            Ekspor laporan kapan saja & pengingat rekap per 3 bulan.
+            Ekspor laporan kapan saja & pengingat rekap di awal bulan ke-4.
           </p>
         </div>
 
@@ -305,38 +310,82 @@ export default function LaporanPage() {
         </div>
       </div>
 
-      {/* NOTIFIKASI PENGINGAT 3 BULAN (TRIWULAN) UNTUK ORANG TUA */}
-      <div className="bg-gradient-to-r from-emerald-900 to-emerald-800 text-white p-5 rounded-3xl border-2 border-amber-400 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      {/* NOTIFIKASI PENGINGAT DI AWAL BULAN KE-4 (BULAN 1, 4, 7, 10) */}
+      <div
+        className={`p-5 rounded-3xl border-2 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all ${
+          isQuarterReminderMonth
+            ? "bg-gradient-to-r from-amber-500 to-amber-600 border-amber-300 text-emerald-950 shadow-xl"
+            : "bg-gradient-to-r from-emerald-900 to-emerald-800 border-emerald-600 text-white"
+        }`}
+      >
         <div className="flex items-start gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-amber-400 text-emerald-950 flex items-center justify-center shrink-0 font-bold shadow-md">
-            <Bell className="w-6 h-6 text-emerald-950 animate-bounce" />
+          <div
+            className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 font-bold shadow-md ${
+              isQuarterReminderMonth
+                ? "bg-emerald-950 text-amber-300"
+                : "bg-amber-400 text-emerald-950"
+            }`}
+          >
+            <Bell
+              className={`w-6 h-6 ${
+                isQuarterReminderMonth ? "animate-bounce text-amber-400" : "text-emerald-950"
+              }`}
+            />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-md text-xs font-black bg-amber-400 text-emerald-950 uppercase">
-                Pengingat Rekap 3 Bulan
+              <span
+                className={`px-2.5 py-0.5 rounded-md text-xs font-black uppercase ${
+                  isQuarterReminderMonth
+                    ? "bg-emerald-950 text-amber-300"
+                    : "bg-amber-400 text-emerald-950"
+                }`}
+              >
+                {isQuarterReminderMonth
+                  ? "PENGINGAT AWAL BULAN KE-4"
+                  : "Status Rekap 3 Bulanan"}
               </span>
-              <span className="text-xs font-bold text-amber-300">
+              <span className="text-xs font-bold">
                 {getQuarterLabel(currentQuarter.toString())} {currentYear}
               </span>
             </div>
             <h3 className="text-lg sm:text-xl font-black mt-1">
-              {isEndOfQuarterMonth
-                ? "Saatnya Rekap Penjualan 3 Bulanan!"
-                : `Periode Berjalan: ${getQuarterLabel(currentQuarter.toString())}`}
+              {isQuarterReminderMonth
+                ? `Waktunya Rekap Pembukuan 3 Bulan Lalu (${getQuarterLabel(
+                    previousQuarter.toString()
+                  )})!`
+                : `Periode Saat Ini: ${getQuarterLabel(currentQuarter.toString())}`}
             </h3>
-            <p className="text-xs sm:text-sm text-emerald-100 font-medium mt-0.5">
-              Orang tua Anda dapat mengeklik tombol ekspor di sebelah kanan kapan saja untuk mengunduh berkas laporan pembukuan Excel 3 bulanan.
+            <p className="text-xs sm:text-sm font-medium mt-0.5 opacity-90">
+              {isQuarterReminderMonth
+                ? "Bulan ini adalah awal bulan ke-4. Tekan tombol di sebelah kanan untuk mengekspor laporan 3 bulan lalu secara manual."
+                : "Sistem akan menampilkan pengingat utama setiap awal bulan ke-4 (Januari, April, Juli, Oktober)."}
             </p>
           </div>
         </div>
 
         <button
-          onClick={() => handleExportCustomCSV(quarterlyTransactions, "Laporan_3_Bulanan")}
-          className="self-stretch md:self-auto py-3 px-5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-emerald-950 font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-xl transition-transform active:scale-95 whitespace-nowrap"
+          onClick={() =>
+            handleExportCustomCSV(
+              transactions.filter((tx) => {
+                const txDate = new Date(tx.created_at);
+                const { startDate, endDate } = getQuarterRange(
+                  previousQuarter,
+                  previousQuarterYear
+                );
+                return txDate >= startDate && txDate <= endDate;
+              }),
+              `Laporan_Triwulan_${previousQuarter}_Tahun_${previousQuarterYear}`
+            )
+          }
+          className={`self-stretch md:self-auto py-3 px-5 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-xl transition-transform active:scale-95 whitespace-nowrap ${
+            isQuarterReminderMonth
+              ? "bg-emerald-950 hover:bg-emerald-900 text-amber-300"
+              : "bg-amber-400 hover:bg-amber-300 text-emerald-950"
+          }`}
         >
           <Download className="w-5 h-5 stroke-[3]" />
-          <span>Ekspor 3 Bulan Ini (.csv)</span>
+          <span>Ekspor 3 Bulan Lalu (.csv)</span>
         </button>
       </div>
 
@@ -381,7 +430,12 @@ export default function LaporanPage() {
           </div>
 
           <button
-            onClick={() => handleExportCustomCSV(quarterlyTransactions, "Laporan_3_Bulanan")}
+            onClick={() =>
+              handleExportCustomCSV(
+                quarterlyTransactions,
+                `Laporan_Triwulan_${selectedQuarter}_Tahun_${selectedYear}`
+              )
+            }
             className="py-3 px-5 rounded-2xl bg-emerald-950 hover:bg-emerald-900 text-amber-300 font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-xl transition-all active:scale-95 whitespace-nowrap"
           >
             <Download className="w-5 h-5 stroke-[3] text-amber-400" />
