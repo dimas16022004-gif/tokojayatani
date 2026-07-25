@@ -75,12 +75,12 @@ export default function LaporanPage() {
   const fetchReports = async () => {
     setLoading(true);
     try {
-      // 1. Sync data: Reset status transaksi Bon lama yang ter-set Lunas oleh RPC lama menjadi Belum Lunas
+      // 1. Sync data: Reset transaksi Bon lama yang ter-set Lunas secara otomatis oleh RPC lama menjadi Belum Lunas
       await supabase
         .from("transactions")
         .update({ payment_status: "Belum Lunas", paid_at: null })
         .eq("payment_method", "Bon")
-        .is("paid_at", null);
+        .or("paid_at.is.null,payment_status.eq.Lunas");
 
       // 2. Fetch transaksi dari DB
       const { data: txData, error: txError } = await supabase
