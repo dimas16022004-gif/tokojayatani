@@ -51,41 +51,65 @@ export default function ProdukPage() {
   };
 
   // Save (Insert / Update) Produk
-  const handleSaveProduct = async (productData: Partial<Product>) => {
-    const payload = {
-      ...productData,
-      barcode: productData.barcode && productData.barcode.trim() ? productData.barcode.trim() : null,
+  const handleSaveProduct = async (rawProductData: Partial<Product>) => {
+    // Normalisasi barcode kosong ("") menjadi null.
+    // Kolom barcode di DB bersifat UNIQUE, dan "" dianggap nilai valid (bukan NULL),
+    // jadi produk kedua tanpa barcode akan gagal disimpan kalau tidak dinormalisasi.
+    const productData: Partial<Product> = {
+      ...rawProductData,
+      barcode: rawProductData.barcode?.trim() ? rawProductData.barcode.trim() : undefined,
     };
+    if (!editingProduct && !productData.barcode) {
+      delete productData.barcode;
+    }
+    if (editingProduct && !rawProductData.barcode?.trim()) {
+      (productData as any).barcode = null;
+    }
 
     if (editingProduct) {
       // UPDATE
       try {
         const { error } = await supabase
           .from("products")
-          .update(payload)
+          .update(productData)
           .eq("id", editingProduct.id);
 
-        if (error) {
-          alert(`Gagal meng-update produk: ${error.message}`);
-          return;
-        }
+        if (error) throw error;
         await fetchProducts();
-      } catch (err: any) {
-        console.error("Gagal update Supabase:", err);
-        alert(`Terjadi kesalahan saat meng-update produk: ${err?.message || "Gagal terhubung"}`);
+      } catch (err) {
+        console.warn("Gagal update Supabase, update state lokal:", err);
+        setProducts((prev) =>
+          prev.map((p) =>
+            p.id === editingProduct.id ? ({ ...p, ...productData } as Product) : p
+          )
+        );
+        alert(
+          "⚠️ Perubahan HANYA tersimpan sementara di layar ini (belum masuk ke database).\n" +
+            "Periksa koneksi internet/Supabase, lalu simpan ulang agar tidak hilang saat refresh."
+        );
       }
     } else {
       // INSERT
       try {
-        const { error } = await supabase.from("products").insert([payload]);
-        if (error) {
-          alert(`Gagal menambah produk baru: ${error.message}`);
-          return;
-        }
+        const { error } = await supabase.from("products").insert([productData]);
+        if (error) throw error;
         await fetchProducts();
-      } catch (err: any) {
-        console.error("Gagal insert Supabase:", err);
-        alert(`Terjadi kesalahan saat menambah produk: ${err?.message || "Gagal terhubung"}`);
+      } catch (err) {
+        console.warn("Gagal insert Supabase, insert state lokal:", err);
+        const newProduct: Product = {
+          id: `p-${Date.now()}`,
+          name: productData.name || "",
+          category: productData.category || "Umum",
+          buy_price: productData.buy_price || 0,
+          sell_price: productData.sell_price || 0,
+          stock: productData.stock || 0,
+          min_stock: productData.min_stock || 5,
+        };
+        setProducts((prev) => [newProduct, ...prev]);
+        alert(
+          "⚠️ Produk HANYA tersimpan sementara di layar ini (belum masuk ke database).\n" +
+            "Periksa koneksi internet/Supabase, lalu tambahkan ulang agar tidak hilang saat refresh."
+        );
       }
     }
   };
@@ -107,6 +131,10 @@ export default function ProdukPage() {
     } catch (err) {
       console.warn("Gagal delete Supabase, update state lokal:", err);
       setProducts((prev) => prev.filter((p) => p.id !== productId));
+      alert(
+        "⚠️ Produk hanya disembunyikan sementara di layar ini — penghapusan BELUM tersimpan ke database.\n" +
+          "Periksa koneksi internet/Supabase, produk ini bisa muncul lagi saat refresh."
+      );
     }
   };
 

@@ -156,7 +156,14 @@ export default function BonPage() {
   const fetchBon = async () => {
     setLoading(true);
     try {
-      // Fetch data Bon dari DB
+      // 1. Sync data: Pastikan transaksi Bon yang belum ada paid_at memiliki status Belum Lunas di DB
+      await supabase
+        .from("transactions")
+        .update({ payment_status: "Belum Lunas" })
+        .eq("payment_method", "Bon")
+        .is("paid_at", null);
+
+      // 2. Fetch data Bon
       const { data, error } = await supabase
         .from("transactions")
         .select("*, transaction_items(*)")
@@ -182,8 +189,6 @@ export default function BonPage() {
 
   useEffect(() => {
     fetchBon();
-    window.addEventListener("focus", fetchBon);
-    return () => window.removeEventListener("focus", fetchBon);
   }, []);
 
   // ─── Update Status & Nama ──────────────────────────────────────────────────

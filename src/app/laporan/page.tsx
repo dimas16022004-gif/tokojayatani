@@ -75,7 +75,14 @@ export default function LaporanPage() {
   const fetchReports = async () => {
     setLoading(true);
     try {
-      // Fetch transaksi dari DB
+      // 1. Sync data: Pastikan transaksi Bon yang belum ada paid_at memiliki status Belum Lunas di DB
+      await supabase
+        .from("transactions")
+        .update({ payment_status: "Belum Lunas" })
+        .eq("payment_method", "Bon")
+        .is("paid_at", null);
+
+      // 2. Fetch transaksi
       const { data: txData, error: txError } = await supabase
         .from("transactions")
         .select("*, transaction_items(*)")
@@ -110,10 +117,9 @@ export default function LaporanPage() {
     }
   };
 
+
   useEffect(() => {
     fetchReports();
-    window.addEventListener("focus", fetchReports);
-    return () => window.removeEventListener("focus", fetchReports);
   }, []);
 
   // Pelunasan Hutang (Tandai Lunas)
@@ -208,10 +214,11 @@ export default function LaporanPage() {
     return txDate >= startDate && txDate <= endDate;
   });
 
+  // Omzet & Untung Triwulan HANYA dihitung dari transaksi yang sudah dibayar
+  // (Tunai, QRIS, atau Bon yang sudah Lunas) — konsisten dengan aturan "Hari Ini".
   const quarterlyPaidTransactions = quarterlyTransactions.filter(
     (tx) => tx.payment_method !== "Bon" || tx.payment_status === "Lunas"
   );
-
   const quarterlyRevenue = quarterlyPaidTransactions.reduce(
     (sum, tx) => sum + Number(tx.total_amount),
     0
@@ -433,7 +440,8 @@ export default function LaporanPage() {
     });
   }, [transactions, searchHistory, historyPaymentFilter, historyDebtFilter, periodMode, customDay, customWeek, customMonth]);
 
-  // Ringkasan Statistik Periode yang Difilter (Kecualikan Bon Belum Lunas)
+  // Ringkasan Statistik Periode yang Difilter — Omzet/Untung hanya dari transaksi
+  // yang sudah dibayar (Bon yang masih "Belum Lunas" adalah piutang, bukan omzet).
   const filteredPaidTransactions = filteredHistoryTransactions.filter(
     (tx) => tx.payment_method !== "Bon" || tx.payment_status === "Lunas"
   );
@@ -569,7 +577,10 @@ export default function LaporanPage() {
               Omzet: {formatRupiah(quarterlyRevenue)}
             </p>
             <p className="text-xs font-extrabold text-emerald-900">
-              Keuntungan: +{formatRupiah(quarterlyProfit)} ({quarterlyTransactions.length} Transaksi)
+              Keuntungan: +{formatRupiah(quarterlyProfit)} ({quarterlyPaidTransactions.length} dari {quarterlyTransactions.length} Transaksi)
+            </p>
+            <p className="text-[10px] font-bold text-emerald-900/70 mt-0.5">
+              *Tidak termasuk Bon yang belum lunas (piutang)
             </p>
           </div>
         </div>
@@ -769,12 +780,12 @@ export default function LaporanPage() {
             <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-center">
               <p className="text-[10px] font-black uppercase text-blue-700">Total Omzet</p>
               <p className="text-base font-black text-blue-900">{formatRupiah(filteredRevenue)}</p>
-              <p className="text-[10px] font-bold text-gray-400">penjualan</p>
+              <p className="text-[10px] font-bold text-gray-400">penjualan (di luar bon belum lunas)</p>
             </div>
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-center">
               <p className="text-[10px] font-black uppercase text-amber-700">Total Untung</p>
               <p className="text-base font-black text-amber-900">{formatRupiah(filteredProfit)}</p>
-              <p className="text-[10px] font-bold text-gray-400">kotor</p>
+              <p className="text-[10px] font-bold text-gray-400">kotor (di luar bon belum lunas)</p>
             </div>
           </div>
 

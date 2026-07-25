@@ -55,6 +55,30 @@ CREATE TABLE IF NOT EXISTS public.transaction_items (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Jaring pengaman: stok tidak boleh minus, di level manapun ia diubah
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.check_constraints
+        WHERE constraint_name = 'products_stock_non_negative'
+    ) THEN
+        ALTER TABLE public.products
+        ADD CONSTRAINT products_stock_non_negative CHECK (stock >= 0);
+    END IF;
+END $$;
+
+-- Selaraskan dengan form Produk (min_stock minimal 1, bukan 0)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.check_constraints
+        WHERE constraint_name = 'products_min_stock_at_least_1'
+    ) THEN
+        ALTER TABLE public.products
+        ADD CONSTRAINT products_min_stock_at_least_1 CHECK (min_stock >= 1);
+    END IF;
+END $$;
+
 -- TRIGGER UPDATED_AT
 CREATE OR REPLACE FUNCTION update_timestamp()
 RETURNS TRIGGER AS $$
@@ -106,6 +130,9 @@ BEGIN
         v_product_id := (v_item->>'product_id')::UUID;
         v_qty := (v_item->>'quantity')::INT;
 
+        -- FOR UPDATE mengunci baris produk ini sampai transaksi selesai,
+        -- supaya 2 transaksi yang berjalan bersamaan tidak sama-sama lolos
+        -- validasi stok berdasarkan angka stok yang sama (race condition).
         SELECT name, stock, buy_price, sell_price 
         INTO v_product_name, v_curr_stock, v_buy_price, v_sell_price
         FROM public.products
