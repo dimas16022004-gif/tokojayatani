@@ -1,10 +1,20 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+
+export const viewport: Viewport = {
+  themeColor: "#166534",
+};
 
 export const metadata: Metadata = {
   title: "Toko Jaya Tani - Kasir & Manajemen Stok",
   description: "Aplikasi web manajemen toko tani yang mudah & intuitif untuk mencatat stok barang dan penjualan.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Toko Jaya Tani",
+  },
 };
 
 export default function RootLayout({
