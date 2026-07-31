@@ -74,25 +74,27 @@ export default function CartDrawer({
   const handleCheckout = async () => {
     if (cart.length === 0) return;
 
-    if (paymentMethod === "Tunai") {
-      if (!paymentInput.trim()) {
-        alert("⚠️ Harap masukkan nominal uang yang dibayarkan oleh pembeli terlebih dahulu!");
-        return;
-      }
-      if (paymentNumber < totalAmount) {
-        alert(
-          `⚠️ Nominal uang yang dibayarkan KURANG!\n\n` +
-          `Total Belanja: ${formatRupiah(totalAmount)}\n` +
-          `Uang Diterima: ${formatRupiah(paymentNumber)}\n` +
-          `Kurang: ${formatRupiah(totalAmount - paymentNumber)}`
-        );
-        return;
-      }
+    if (!paymentInput.trim()) {
+      alert(
+        paymentMethod === "Tunai"
+          ? "⚠️ Harap masukkan nominal uang tunai yang diterima dari pembeli terlebih dahulu!"
+          : "⚠️ Harap masukkan nominal transfer yang diterima di rekening BRI terlebih dahulu!"
+      );
+      return;
+    }
+
+    if (paymentNumber < totalAmount) {
+      alert(
+        `⚠️ Nominal uang yang dibayarkan KURANG!\n\n` +
+        `Total Belanja: ${formatRupiah(totalAmount)}\n` +
+        `Nominal Diterima: ${formatRupiah(paymentNumber)}\n` +
+        `Kurang: ${formatRupiah(totalAmount - paymentNumber)}`
+      );
+      return;
     }
 
     setIsProcessing(true);
-    const finalPayment =
-      paymentMethod === "Tunai" ? paymentNumber : totalAmount;
+    const finalPayment = paymentNumber;
     const success = await onProcessTransaction(
       finalPayment,
       paymentMethod,
@@ -315,42 +317,44 @@ export default function CartDrawer({
               </div>
             )}
 
-            {/* Payment Input (Hanya untuk Tunai) */}
-            {paymentMethod === "Tunai" && (
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-gray-700 uppercase">
-                  Uang Diterima / Bayar (Rp)
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    placeholder={`Contoh: ${totalAmount}`}
-                    value={paymentInput}
-                    onChange={(e) => setPaymentInput(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border-2 border-gray-300 font-extrabold text-lg text-gray-900 focus:border-emerald-600 focus:outline-hidden"
-                  />
-                  <DollarSign className="w-5 h-5 text-gray-400 absolute left-2.5 top-3" />
-                </div>
+            {/* Input Nominal Pembayaran (Wajib untuk Tunai & Transfer) */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-gray-700 uppercase">
+                {paymentMethod === "Tunai"
+                  ? "Uang Tunai Diterima (Rp) *"
+                  : "Nominal Transfer Diterima (Rp) *"}
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  placeholder={`Contoh: ${totalAmount}`}
+                  value={paymentInput}
+                  onChange={(e) => setPaymentInput(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border-2 border-gray-300 font-extrabold text-lg text-gray-900 focus:border-emerald-600 focus:outline-hidden"
+                />
+                <DollarSign className="w-5 h-5 text-gray-400 absolute left-2.5 top-3" />
+              </div>
 
-                <div className="flex gap-1.5 pt-1">
+              <div className="flex gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleQuickPayment(totalAmount)}
+                  className="px-2.5 py-1 text-xs font-bold bg-emerald-100 hover:bg-emerald-200 text-emerald-900 rounded-lg border border-emerald-300"
+                >
+                  Uang Pas ({formatRupiah(totalAmount)})
+                </button>
+                {[50000, 100000, 200000].map((amt) => (
                   <button
-                    onClick={() => handleQuickPayment(totalAmount)}
+                    key={amt}
+                    type="button"
+                    onClick={() => handleQuickPayment(amt)}
                     className="px-2.5 py-1 text-xs font-bold bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg"
                   >
-                    Uang Pas
+                    {formatRupiah(amt)}
                   </button>
-                  {[50000, 100000, 200000].map((amt) => (
-                    <button
-                      key={amt}
-                      onClick={() => handleQuickPayment(amt)}
-                      className="px-2.5 py-1 text-xs font-bold bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg"
-                    >
-                      {formatRupiah(amt)}
-                    </button>
-                  ))}
-                </div>
+                ))}
               </div>
-            )}
+            </div>
 
             {/* Kembalian Calculation */}
             {paymentMethod === "Tunai" && paymentNumber > 0 && (
