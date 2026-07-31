@@ -73,14 +73,26 @@ export default function CartDrawer({
 
   const handleCheckout = async () => {
     if (cart.length === 0) return;
-    if (paymentMethod === "Tunai" && paymentNumber < totalAmount && paymentInput !== "") {
-      alert("Jumlah uang pembayaran kurang dari total belanja!");
-      return;
+
+    if (paymentMethod === "Tunai") {
+      if (!paymentInput.trim()) {
+        alert("⚠️ Harap masukkan nominal uang yang dibayarkan oleh pembeli terlebih dahulu!");
+        return;
+      }
+      if (paymentNumber < totalAmount) {
+        alert(
+          `⚠️ Nominal uang yang dibayarkan KURANG!\n\n` +
+          `Total Belanja: ${formatRupiah(totalAmount)}\n` +
+          `Uang Diterima: ${formatRupiah(paymentNumber)}\n` +
+          `Kurang: ${formatRupiah(totalAmount - paymentNumber)}`
+        );
+        return;
+      }
     }
 
     setIsProcessing(true);
     const finalPayment =
-      paymentMethod === "Tunai" ? paymentNumber || totalAmount : totalAmount;
+      paymentMethod === "Tunai" ? paymentNumber : totalAmount;
     const success = await onProcessTransaction(
       finalPayment,
       paymentMethod,
