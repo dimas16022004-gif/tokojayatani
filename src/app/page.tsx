@@ -119,46 +119,80 @@ export default function KasirPage() {
 
   const handleClearCart = () => setCart([]);
 
-  // Eksekusi Transaksi lewat RPC "process_transaction" (atomik di sisi server:
-  // validasi stok, insert transaksi + item, dan kurangi stok terjadi dalam 1 transaksi DB).
+  // Eksekusi Transaksi (Direct Table Insert untuk menjamin status Lunas / Belum Lunas akurat)
   const handleProcessTransaction = async (
     paymentAmount: number,
     paymentMethod: PaymentMethod,
-    customerName: string
+    customerName: string,
+    paymentStatus: "Lunas" | "Belum Lunas" = "Lunas"
   ): Promise<boolean> => {
     if (cart.length === 0) return false;
 
     try {
-      const itemsPayload = cart.map((item) => ({
-        product_id: item.product.id,
-        quantity: item.quantity,
-      }));
+      const totalAmount = cart.reduce(
+        (sum, item) => sum + item.product.sell_price * item.quantity,
+        0
+      );
+      const totalProfit = cart.reduce(
+        (sum, item) =>
+          sum + (item.product.sell_price - item.product.buy_price) * item.quantity,
+        0
+      );
 
-      const { error } = await supabase.rpc("process_transaction", {
-        items: itemsPayload,
-        p_payment_method: paymentMethod,
-        p_customer_name: customerName || "Pelanggan Umum",
-      });
+      // 1. Insert ke tabel transactions
+      const { data: newTx, error: txErr } = await supabase
+        .from("transactions")
+        .insert([
+          {
+            total_amount: totalAmount,
+            total_profit: totalProfit,
+            payment_method: paymentMethod,
+            payment_status: paymentStatus,
+            customer_name: customerName || "Pelanggan Umum",
+            paid_at: paymentStatus === "Lunas" ? new Date().toISOString() : null,
+          },
+        ])
+        .select()
+        .single();
 
-      if (error) {
-        console.error("Gagal memproses transaksi (RPC):", error);
-        // Tampilkan alasan sebenarnya (mis. "Stok produk X tidak mencukupi")
-        // agar kasir tahu transaksi TIDAK tersimpan, bukan pura-pura berhasil.
-        alert(
-          `❌ Transaksi GAGAL disimpan!\n\n${
-            error.message || "Terjadi kesalahan saat menghubungi database."
-          }\n\nSilakan periksa stok / koneksi lalu coba lagi.`
-        );
-        await fetchProducts(); // sinkronkan ulang stok yang tampil, jaga-jaga sudah berubah
+      if (txErr || !newTx?.id) {
+        alert(`❌ Transaksi GAGAL disimpan: ${txErr?.message || "Terjadi kesalahan database"}`);
         return false;
       }
 
-      // Sukses: muat ulang produk supaya stok terbaru dari server ditampilkan
+      // 2. Insert ke tabel transaction_items
+      const itemPayload = cart.map((item) => ({
+        transaction_id: newTx.id,
+        product_id: item.product.id,
+        product_name: item.product.name,
+        quantity: item.quantity,
+        buy_price: item.product.buy_price,
+        sell_price: item.product.sell_price,
+        profit: (item.product.sell_price - item.product.buy_price) * item.quantity,
+      }));
+
+      const { error: itemsErr } = await supabase
+        .from("transaction_items")
+        .insert(itemPayload);
+
+      if (itemsErr) {
+        console.error("Gagal simpan transaction_items:", itemsErr);
+      }
+
+      // 3. Update stok di tabel products
+      for (const item of cart) {
+        const newStock = Math.max(0, item.product.stock - item.quantity);
+        await supabase
+          .from("products")
+          .update({ stock: newStock })
+          .eq("id", item.product.id);
+      }
+
       await fetchProducts();
       return true;
-    } catch (err) {
+    } catch (err: any) {
       console.error("Gagal memproses transaksi:", err);
-      alert("❌ Transaksi GAGAL: tidak dapat terhubung ke database. Coba lagi.");
+      alert(`❌ Terjadi kesalahan sistem: ${err?.message || "Koneksi terputus"}`);
       return false;
     }
   };

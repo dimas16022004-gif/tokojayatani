@@ -44,6 +44,7 @@ export default function LaporanPage() {
   // Filter Riwayat Transaksi Interaktif
   const [searchHistory, setSearchHistory] = useState("");
   const [historyPaymentFilter, setHistoryPaymentFilter] = useState<string>("Semua");
+  const [historyDebtFilter, setHistoryDebtFilter] = useState<string>("semua");
 
   // Filter Periode: mode = "semua" | "hari_ini" | "kemarin" | "minggu_ini" | "minggu_lalu" | "bulan_ini" | "bulan_lalu" | "custom_hari" | "custom_minggu" | "custom_bulan"
   const [periodMode, setPeriodMode] = useState<string>("semua");
@@ -82,7 +83,7 @@ export default function LaporanPage() {
       if (!txError && txData) {
         const formattedTx = txData.map((tx: any) => ({
           ...tx,
-          payment_status: "Lunas",
+          payment_status: tx.payment_status || "Lunas",
           items: tx.items && tx.items.length > 0 ? tx.items : (tx.transaction_items || []),
         }));
         setTransactions(formattedTx as Transaction[]);
@@ -232,6 +233,32 @@ export default function LaporanPage() {
     }
   };
 
+  // Ubah Status Pelunasan Transaksi (Lunas / Belum Lunas)
+  const handleTogglePaymentStatus = async (tx: Transaction, targetStatus: "Lunas" | "Belum Lunas") => {
+    const confirmMsg = targetStatus === "Lunas"
+      ? `Tandai transaksi #${tx.id.substring(0, 8)} (${formatRupiah(tx.total_amount)}) atas nama "${tx.customer_name || "Pelanggan"}" sebagai SUDAH LUNAS?`
+      : `Ubah status transaksi #${tx.id.substring(0, 8)} menjadi BELUM LUNAS?`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const nowIso = targetStatus === "Lunas" ? new Date().toISOString() : null;
+      const { error } = await supabase
+        .from("transactions")
+        .update({ payment_status: targetStatus, paid_at: nowIso })
+        .eq("id", tx.id);
+
+      if (error) {
+        console.warn("Update status error:", error.message);
+      }
+
+      await fetchReports();
+      alert(`✅ Status transaksi #${tx.id.substring(0, 8)} berhasil diubah menjadi ${targetStatus.toUpperCase()}!`);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   // Ekspor Laporan Bebas / Kapan Saja (.csv)
   // ── RESET TRANSAKSI SETELAH EKSPOR ────────────────────────────────────────
   const handleResetTransactions = async (exportedIds: string[]) => {
@@ -376,6 +403,14 @@ export default function LaporanPage() {
       const matchesPayment =
         historyPaymentFilter === "Semua" || tx.payment_method === historyPaymentFilter;
 
+      // Filter Status Pelunasan
+      let matchesDebt = true;
+      if (historyDebtFilter === "belum_lunas") {
+        matchesDebt = tx.payment_status === "Belum Lunas";
+      } else if (historyDebtFilter === "lunas") {
+        matchesDebt = tx.payment_status === "Lunas";
+      }
+
       // Filter Periode
       let matchesPeriod = true;
       const txDate = new Date(tx.created_at);
@@ -432,13 +467,16 @@ export default function LaporanPage() {
           txDate.getFullYear() === myear && txDate.getMonth() + 1 === mmonth;
       }
 
-      return matchesSearch && matchesPayment && matchesPeriod;
+      return matchesSearch && matchesPayment && matchesDebt && matchesPeriod;
     });
-  }, [transactions, searchHistory, historyPaymentFilter, periodMode, customDay, customWeek, customMonth]);
+  }, [transactions, searchHistory, historyPaymentFilter, historyDebtFilter, periodMode, customDay, customWeek, customMonth]);
 
-  // Ringkasan Statistik Periode yang Difilter
-  const filteredRevenue = filteredHistoryTransactions.reduce((s, tx) => s + Number(tx.total_amount), 0);
-  const filteredProfit = filteredHistoryTransactions.reduce((s, tx) => s + Number(tx.total_profit), 0);
+  // Ringkasan Statistik Periode yang Difilter — Omzet hanya dari transaksi LUNAS
+  const filteredPaidTransactions = filteredHistoryTransactions.filter(
+    (tx) => tx.payment_status === "Lunas"
+  );
+  const filteredRevenue = filteredPaidTransactions.reduce((s, tx) => s + Number(tx.total_amount), 0);
+  const filteredProfit = filteredPaidTransactions.reduce((s, tx) => s + Number(tx.total_profit), 0);
 
 
   return (
@@ -760,8 +798,8 @@ export default function LaporanPage() {
             </div>
           </div>
 
-          {/* FILTER PENCARIAN & PEMBAYARAN */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-gray-50 p-3 rounded-2xl border border-gray-200">
+          {/* FILTER PENCARIAN, PEMBAYARAN & STATUS PELUNASAN */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-gray-50 p-3 rounded-2xl border border-gray-200">
             {/* Search Box */}
             <div className="relative">
               <input
@@ -773,6 +811,17 @@ export default function LaporanPage() {
               />
               <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-3" />
             </div>
+
+            {/* Filter Status Pelunasan */}
+            <select
+              value={historyDebtFilter}
+              onChange={(e) => setHistoryDebtFilter(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl bg-white border border-rose-300 text-xs font-bold text-rose-900 focus:border-rose-600 focus:outline-hidden"
+            >
+              <option value="semua">🗒️ Semua Status</option>
+              <option value="belum_lunas">⏳ Belum Lunas (Hutang)</option>
+              <option value="lunas">✅ Sudah Lunas</option>
+            </select>
 
             {/* Filter Metode Pembayaran */}
             <select
@@ -796,10 +845,13 @@ export default function LaporanPage() {
               filteredHistoryTransactions.map((tx) => {
                 const isExpanded = expandedTxId === tx.id;
                 const hasItems = tx.items && tx.items.length > 0;
+                const isUnpaid = tx.payment_status === "Belum Lunas";
                 return (
                   <div
                     key={tx.id}
-                    className={`rounded-2xl border-2 transition-all overflow-hidden border-gray-200 bg-gray-50 ${isExpanded ? "shadow-md" : ""}`}
+                    className={`rounded-2xl border-2 transition-all overflow-hidden ${
+                      isUnpaid ? "border-rose-300 bg-rose-50/40" : "border-gray-200 bg-gray-50"
+                    } ${isExpanded ? "shadow-md" : ""}`}
                   >
                     {/* Baris Ringkasan */}
                     <div className="p-3.5">
@@ -808,8 +860,12 @@ export default function LaporanPage() {
                         <span className={`px-2 py-0.5 text-[10px] font-black rounded-md ${
                           tx.payment_method === "QRIS" ? "bg-blue-200 text-blue-900" : "bg-emerald-200 text-emerald-900"
                         }`}>{tx.payment_method || "Tunai"}</span>
-                        <span className="px-2 py-0.5 text-[10px] font-black rounded-md bg-emerald-100 text-emerald-800">
-                          LUNAS
+                        <span className={`px-2 py-0.5 text-[10px] font-black rounded-md ${
+                          isUnpaid
+                            ? "bg-rose-600 text-white animate-pulse"
+                            : "bg-emerald-100 text-emerald-800"
+                        }`}>
+                          {isUnpaid ? "BELUM LUNAS" : "LUNAS"}
                         </span>
                         <span className="ml-auto text-gray-400 font-semibold">{formatDateTime(tx.created_at)}</span>
                       </div>
@@ -826,6 +882,17 @@ export default function LaporanPage() {
                         </div>
 
                         <div className="flex items-center gap-1.5 flex-wrap">
+                          {/* Tombol Tandai Lunas jika Belum Lunas */}
+                          {isUnpaid && (
+                            <button
+                              onClick={() => handleTogglePaymentStatus(tx, "Lunas")}
+                              className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-xs transition-transform active:scale-95 flex items-center gap-1"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Tandai Lunas
+                            </button>
+                          )}
+
                           {/* Tombol Lihat Detail */}
                           <button
                             onClick={() => setExpandedTxId(isExpanded ? null : tx.id)}
