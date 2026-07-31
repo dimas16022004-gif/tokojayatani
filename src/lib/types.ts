@@ -1,4 +1,4 @@
-export type PaymentMethod = "Tunai" | "QRIS" | "Bon";
+export type PaymentMethod = "Tunai" | "QRIS";
 export type PaymentStatus = "Lunas" | "Belum Lunas";
 
 export interface Product {

@@ -14,9 +14,7 @@ import {
   DollarSign,
   Loader2,
   CreditCard,
-  UserCheck,
   QrCode,
-  FileText,
 } from "lucide-react";
 
 interface CartDrawerProps {
@@ -76,10 +74,6 @@ export default function CartDrawer({
     if (cart.length === 0) return;
     if (paymentMethod === "Tunai" && paymentNumber < totalAmount && paymentInput !== "") {
       alert("Jumlah uang pembayaran kurang dari total belanja!");
-      return;
-    }
-    if (paymentMethod === "Bon" && (!customerName.trim() || customerName === "Pelanggan Umum")) {
-      alert("Harap masukkan Nama Pelanggan / Pembeli untuk pencatatan Bon!");
       return;
     }
 
@@ -248,63 +242,34 @@ export default function CartDrawer({
               <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">
                 Metode Pembayaran
               </label>
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("Tunai")}
-                  className={`py-2 px-2 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 border-2 transition-all ${
+                  className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border-2 transition-all ${
                     paymentMethod === "Tunai"
                       ? "border-emerald-600 bg-emerald-50 text-emerald-900 shadow-xs"
                       : "border-gray-200 text-gray-600 hover:bg-gray-50"
                   }`}
                 >
                   <CreditCard className="w-4 h-4 text-emerald-700" />
-                  <span>Tunai</span>
+                  <span>Tunai (Cash)</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setPaymentMethod("QRIS")}
-                  className={`py-2 px-2 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 border-2 transition-all ${
+                  className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border-2 transition-all ${
                     paymentMethod === "QRIS"
                       ? "border-blue-600 bg-blue-50 text-blue-900 shadow-xs"
                       : "border-gray-200 text-gray-600 hover:bg-gray-50"
                   }`}
                 >
                   <QrCode className="w-4 h-4 text-blue-700" />
-                  <span>QRIS</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod("Bon")}
-                  className={`py-2 px-2 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 border-2 transition-all ${
-                    paymentMethod === "Bon"
-                      ? "border-amber-600 bg-amber-50 text-amber-900 shadow-xs"
-                      : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  <FileText className="w-4 h-4 text-amber-700" />
-                  <span>Bon / Piutang</span>
+                  <span>QRIS / Transfer</span>
                 </button>
               </div>
             </div>
-
-            {/* Nama Pelanggan jika Bon / Piutang */}
-            {paymentMethod === "Bon" && (
-              <div className="space-y-1">
-                <label className="block text-xs font-bold text-amber-900 uppercase flex items-center gap-1">
-                  <UserCheck className="w-4 h-4 text-amber-700" /> Nama Pelanggan (Wajib per Bon)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Contoh: Pak Haji Ahmad"
-                  value={customerName === "Pelanggan Umum" ? "" : customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border-2 border-amber-300 font-bold text-base text-gray-900 focus:border-amber-600 focus:outline-hidden bg-amber-50/50"
-                />
-              </div>
-            )}
 
             {/* Payment Input (Hanya untuk Tunai) */}
             {paymentMethod === "Tunai" && (

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ShoppingCart, Package, BarChart3, Store, BookOpen } from "lucide-react";
+import { ShoppingCart, Package, BarChart3, Store } from "lucide-react";
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -19,12 +19,6 @@ export default function Navbar() {
       label: "Kelola Stok & Produk",
       mobileLabel: "Produk",
       icon: Package,
-    },
-    {
-      href: "/bon",
-      label: "Catatan Piutang",
-      mobileLabel: "Piutang",
-      icon: BookOpen,
     },
     {
       href: "/laporan",
@@ -68,13 +62,10 @@ export default function Navbar() {
                       isActive
                         ? "bg-amber-400 text-emerald-950 shadow-md scale-105"
                         : "text-emerald-100 hover:bg-emerald-700 hover:text-white"
-                    } ${item.href === "/bon" && !isActive ? "text-rose-200 hover:text-white" : ""}`}
+                    }`}
                   >
                     <Icon className="w-4 h-4" />
                     <span>{item.label}</span>
-                    {item.href === "/bon" && !isActive && (
-                      <span className="w-2 h-2 rounded-full bg-rose-400 animate-pulse" />
-                    )}
                   </Link>
                 );
               })}
@@ -85,7 +76,7 @@ export default function Navbar() {
 
       {/* Bottom Mobile Navigation Bar */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-emerald-900 border-t border-emerald-700 shadow-2xl px-2 py-1.5">
-        <div className="grid grid-cols-4 gap-1">
+        <div className="grid grid-cols-3 gap-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
@@ -100,12 +91,8 @@ export default function Navbar() {
                 }`}
               >
                 <Icon
-                  className={`w-5 h-5 mb-0.5 ${isActive ? "text-emerald-950" : item.href === "/bon" ? "text-rose-300" : "text-emerald-300"}`}
+                  className={`w-5 h-5 mb-0.5 ${isActive ? "text-emerald-950" : "text-emerald-300"}`}
                 />
-                {/* Dot indikator Bon */}
-                {item.href === "/bon" && !isActive && (
-                  <span className="absolute top-1 right-3 w-2 h-2 rounded-full bg-rose-400 animate-pulse" />
-                )}
                 <span className="text-[10px] leading-tight text-center truncate max-w-full">
                   {item.mobileLabel}
                 </span>

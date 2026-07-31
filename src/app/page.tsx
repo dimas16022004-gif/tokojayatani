@@ -173,7 +173,7 @@ export default function KasirPage() {
           </div>
           <h2 className="text-2xl sm:text-3xl font-black">Penjualan Toko Tani</h2>
           <p className="text-emerald-100 text-sm sm:text-base font-medium mt-0.5">
-            Mendukung pencarian nama, Pemindai Barcode, dan transaksi Tunai / QRIS / Bon.
+            Mendukung pencarian nama, Pemindai Barcode, dan transaksi Tunai / QRIS.
           </p>
         </div>
 

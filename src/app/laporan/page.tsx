@@ -16,7 +16,6 @@ import {
   Download,
   CreditCard,
   QrCode,
-  FileText,
   Filter,
   Search,
   CheckCircle2,
@@ -44,7 +43,6 @@ export default function LaporanPage() {
   // Filter Riwayat Transaksi Interaktif
   const [searchHistory, setSearchHistory] = useState("");
   const [historyPaymentFilter, setHistoryPaymentFilter] = useState<string>("Semua");
-  const [historyDebtFilter, setHistoryDebtFilter] = useState<string>("semua");
 
   // Filter Periode: mode = "semua" | "hari_ini" | "kemarin" | "minggu_ini" | "minggu_lalu" | "bulan_ini" | "bulan_lalu" | "custom_hari" | "custom_minggu" | "custom_bulan"
   const [periodMode, setPeriodMode] = useState<string>("semua");
@@ -71,18 +69,10 @@ export default function LaporanPage() {
     `${currentYear}-${String(currentMonth).padStart(2, "0")}`
   );
 
-
   const fetchReports = async () => {
     setLoading(true);
     try {
-      // 1. Sync data: Pastikan transaksi Bon yang belum ada paid_at memiliki status Belum Lunas di DB
-      await supabase
-        .from("transactions")
-        .update({ payment_status: "Belum Lunas" })
-        .eq("payment_method", "Bon")
-        .is("paid_at", null);
-
-      // 2. Fetch transaksi
+      // Fetch transaksi
       const { data: txData, error: txError } = await supabase
         .from("transactions")
         .select("*, transaction_items(*)")
@@ -91,7 +81,7 @@ export default function LaporanPage() {
       if (!txError && txData) {
         const formattedTx = txData.map((tx: any) => ({
           ...tx,
-          payment_status: tx.payment_status || "Lunas",
+          payment_status: "Lunas",
           items: tx.items && tx.items.length > 0 ? tx.items : (tx.transaction_items || []),
         }));
         setTransactions(formattedTx as Transaction[]);
@@ -117,54 +107,19 @@ export default function LaporanPage() {
     }
   };
 
-
   useEffect(() => {
     fetchReports();
   }, []);
 
-  // Pelunasan Hutang (Tandai Lunas)
-  const handlePayDebt = async (txId: string, customerName: string) => {
-    const confirmPay = window.confirm(
-      `Tandai hutang atas nama "${customerName}" sebagai SUDAH LUNAS?`
-    );
-    if (!confirmPay) return;
-
-    try {
-      const nowIso = new Date().toISOString();
-      const { error } = await supabase
-        .from("transactions")
-        .update({ payment_status: "Lunas", paid_at: nowIso })
-        .eq("id", txId);
-
-      if (error) {
-        console.warn("Update Supabase error:", error.message);
-      }
-      
-      await fetchReports();
-      alert(`✅ Hutang atas nama "${customerName}" berhasil ditandai LUNAS!`);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // Ringkasan Hari Ini — BON hanya terhitung jika SUDAH LUNAS
+  // Ringkasan Hari Ini
   const todayStr = new Date().toDateString();
   const todayTransactions = transactions.filter(
     (tx) => new Date(tx.created_at).toDateString() === todayStr
   );
 
-  // Hanya transaksi yang sudah dibayar lunas (Tunai, QRIS, atau Bon Lunas)
-  const todayPaidTransactions = todayTransactions.filter(
-    (tx) => tx.payment_method !== "Bon" || tx.payment_status === "Lunas"
-  );
-
-  const todayRevenue = todayPaidTransactions.reduce((sum, tx) => sum + Number(tx.total_amount), 0);
-  const todayProfit = todayPaidTransactions.reduce((sum, tx) => sum + Number(tx.total_profit), 0);
-  const todayCount = todayPaidTransactions.length;
-  const todayPendingBon = todayTransactions.filter(
-    (tx) => tx.payment_method === "Bon" && tx.payment_status === "Belum Lunas"
-  );
-  const todayPendingBonAmount = todayPendingBon.reduce((sum, tx) => sum + Number(tx.total_amount), 0);
+  const todayRevenue = todayTransactions.reduce((sum, tx) => sum + Number(tx.total_amount), 0);
+  const todayProfit = todayTransactions.reduce((sum, tx) => sum + Number(tx.total_profit), 0);
+  const todayCount = todayTransactions.length;
 
   const tunaiTotal = todayTransactions
     .filter((tx) => tx.payment_method === "Tunai")
@@ -173,13 +128,6 @@ export default function LaporanPage() {
   const qrisTotal = todayTransactions
     .filter((tx) => tx.payment_method === "QRIS")
     .reduce((sum, tx) => sum + Number(tx.total_amount), 0);
-
-  // Bon belum lunas — ditampilkan sebagai piutang, bukan pendapatan
-  const bonLunasTotal = todayTransactions
-    .filter((tx) => tx.payment_method === "Bon" && tx.payment_status === "Lunas")
-    .reduce((sum, tx) => sum + Number(tx.total_amount), 0);
-
-  const bonBelumLunasTotal = todayPendingBonAmount;
 
   // Filter Transaksi 3 Bulanan (Triwulan)
   const getQuarterRange = (quarter: number, year: number) => {
@@ -214,16 +162,11 @@ export default function LaporanPage() {
     return txDate >= startDate && txDate <= endDate;
   });
 
-  // Omzet & Untung Triwulan HANYA dihitung dari transaksi yang sudah dibayar
-  // (Tunai, QRIS, atau Bon yang sudah Lunas) — konsisten dengan aturan "Hari Ini".
-  const quarterlyPaidTransactions = quarterlyTransactions.filter(
-    (tx) => tx.payment_method !== "Bon" || tx.payment_status === "Lunas"
-  );
-  const quarterlyRevenue = quarterlyPaidTransactions.reduce(
+  const quarterlyRevenue = quarterlyTransactions.reduce(
     (sum, tx) => sum + Number(tx.total_amount),
     0
   );
-  const quarterlyProfit = quarterlyPaidTransactions.reduce(
+  const quarterlyProfit = quarterlyTransactions.reduce(
     (sum, tx) => sum + Number(tx.total_profit),
     0
   );
@@ -311,7 +254,7 @@ export default function LaporanPage() {
               idx === 0 ? `"${tx.id}"` : `""`,
               idx === 0 ? `"${formatDateTime(tx.created_at)}"` : `""`,
               idx === 0 ? `"${tx.payment_method || "Tunai"}"` : `""`,
-              idx === 0 ? `"${tx.payment_status || "Lunas"}"` : `""`,
+              idx === 0 ? `"Lunas"` : `""`,
               idx === 0 ? `"${tx.customer_name || "Pelanggan Umum"}"` : `""`,
               `"${item.product_name}"`,
               item.quantity,
@@ -328,7 +271,7 @@ export default function LaporanPage() {
             `"${tx.id}"`,
             `"${formatDateTime(tx.created_at)}"`,
             `"${tx.payment_method || "Tunai"}"`,
-            `"${tx.payment_status || "Lunas"}"`,
+            `"Lunas"`,
             `"${tx.customer_name || "Pelanggan Umum"}"`,
             `"(detail tidak tersedia)"`,
             `""`,
@@ -371,14 +314,6 @@ export default function LaporanPage() {
       // Filter Metode Pembayaran
       const matchesPayment =
         historyPaymentFilter === "Semua" || tx.payment_method === historyPaymentFilter;
-
-      // Filter Status Hutang
-      let matchesDebt = true;
-      if (historyDebtFilter === "belum_lunas") {
-        matchesDebt = tx.payment_status === "Belum Lunas";
-      } else if (historyDebtFilter === "lunas") {
-        matchesDebt = tx.payment_status === "Lunas";
-      }
 
       // Filter Periode
       let matchesPeriod = true;
@@ -436,17 +371,13 @@ export default function LaporanPage() {
           txDate.getFullYear() === myear && txDate.getMonth() + 1 === mmonth;
       }
 
-      return matchesSearch && matchesPayment && matchesDebt && matchesPeriod;
+      return matchesSearch && matchesPayment && matchesPeriod;
     });
-  }, [transactions, searchHistory, historyPaymentFilter, historyDebtFilter, periodMode, customDay, customWeek, customMonth]);
+  }, [transactions, searchHistory, historyPaymentFilter, periodMode, customDay, customWeek, customMonth]);
 
-  // Ringkasan Statistik Periode yang Difilter — Omzet/Untung hanya dari transaksi
-  // yang sudah dibayar (Bon yang masih "Belum Lunas" adalah piutang, bukan omzet).
-  const filteredPaidTransactions = filteredHistoryTransactions.filter(
-    (tx) => tx.payment_method !== "Bon" || tx.payment_status === "Lunas"
-  );
-  const filteredRevenue = filteredPaidTransactions.reduce((s, tx) => s + Number(tx.total_amount), 0);
-  const filteredProfit = filteredPaidTransactions.reduce((s, tx) => s + Number(tx.total_profit), 0);
+  // Ringkasan Statistik Periode yang Difilter
+  const filteredRevenue = filteredHistoryTransactions.reduce((s, tx) => s + Number(tx.total_amount), 0);
+  const filteredProfit = filteredHistoryTransactions.reduce((s, tx) => s + Number(tx.total_profit), 0);
 
 
   return (
@@ -457,9 +388,9 @@ export default function LaporanPage() {
           <div className="flex items-center gap-2 text-amber-300 text-sm font-bold uppercase tracking-wider mb-1">
             <BarChart3 className="w-5 h-5" /> Laporan Ringkas & Pembukuan
           </div>
-          <h2 className="text-2xl sm:text-3xl font-black">Laporan Penjualan & Buku Hutang</h2>
+          <h2 className="text-2xl sm:text-3xl font-black">Laporan Penjualan Toko Tani</h2>
           <p className="text-emerald-100 text-sm sm:text-base font-medium mt-0.5">
-            Pantau hutang pelanggan, ekspor laporan per 3 bulan, & pelunasan bon.
+            Pantau omzet, untung kotor, dan ekspor laporan transaksi toko.
           </p>
         </div>
 
@@ -577,10 +508,7 @@ export default function LaporanPage() {
               Omzet: {formatRupiah(quarterlyRevenue)}
             </p>
             <p className="text-xs font-extrabold text-emerald-900">
-              Keuntungan: +{formatRupiah(quarterlyProfit)} ({quarterlyPaidTransactions.length} dari {quarterlyTransactions.length} Transaksi)
-            </p>
-            <p className="text-[10px] font-bold text-emerald-900/70 mt-0.5">
-              *Tidak termasuk Bon yang belum lunas (piutang)
+              Keuntungan: +{formatRupiah(quarterlyProfit)} ({quarterlyTransactions.length} Transaksi)
             </p>
           </div>
         </div>
@@ -593,10 +521,10 @@ export default function LaporanPage() {
             Rincian Pembayaran Hari Ini ({formatDateOnly(new Date().toISOString())})
           </h3>
           <span className="text-[11px] font-bold text-gray-400 bg-gray-100 px-2 py-1 rounded-lg">
-            ✅ Omzet = Tunai + QRIS + Bon Lunas
+            ✅ Omzet = Tunai + QRIS
           </span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200">
             <div className="flex items-center gap-2 mb-1">
               <CreditCard className="w-4 h-4 text-emerald-700" />
@@ -611,24 +539,6 @@ export default function LaporanPage() {
               <p className="text-xs font-bold text-blue-800 uppercase">QRIS</p>
             </div>
             <p className="text-lg font-black text-blue-900">{formatRupiah(qrisTotal)}</p>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300">
-            <div className="flex items-center gap-2 mb-1">
-              <FileText className="w-4 h-4 text-emerald-700" />
-              <p className="text-xs font-bold text-emerald-800 uppercase">Bon ✅ Lunas</p>
-            </div>
-            <p className="text-lg font-black text-emerald-900">{formatRupiah(bonLunasTotal)}</p>
-            <p className="text-[10px] font-bold text-emerald-600">Masuk ke omzet</p>
-          </div>
-
-          <div className="p-4 rounded-2xl bg-rose-50 border-2 border-rose-300">
-            <div className="flex items-center gap-2 mb-1">
-              <FileText className="w-4 h-4 text-rose-700" />
-              <p className="text-xs font-bold text-rose-800 uppercase">Bon ❌ Piutang</p>
-            </div>
-            <p className="text-lg font-black text-rose-700">{formatRupiah(bonBelumLunasTotal)}</p>
-            <p className="text-[10px] font-bold text-rose-500">Belum masuk omzet</p>
           </div>
         </div>
       </div>
@@ -780,17 +690,17 @@ export default function LaporanPage() {
             <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3 text-center">
               <p className="text-[10px] font-black uppercase text-blue-700">Total Omzet</p>
               <p className="text-base font-black text-blue-900">{formatRupiah(filteredRevenue)}</p>
-              <p className="text-[10px] font-bold text-gray-400">penjualan (di luar bon belum lunas)</p>
+              <p className="text-[10px] font-bold text-gray-400">total penjualan</p>
             </div>
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-center">
               <p className="text-[10px] font-black uppercase text-amber-700">Total Untung</p>
               <p className="text-base font-black text-amber-900">{formatRupiah(filteredProfit)}</p>
-              <p className="text-[10px] font-bold text-gray-400">kotor (di luar bon belum lunas)</p>
+              <p className="text-[10px] font-bold text-gray-400">estimasi untung kotor</p>
             </div>
           </div>
 
-          {/* FILTER PENCARIAN, PEMBAYARAN & HUTANG */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-gray-50 p-3 rounded-2xl border border-gray-200">
+          {/* FILTER PENCARIAN & PEMBAYARAN */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-gray-50 p-3 rounded-2xl border border-gray-200">
             {/* Search Box */}
             <div className="relative">
               <input
@@ -803,17 +713,6 @@ export default function LaporanPage() {
               <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-3" />
             </div>
 
-            {/* Filter Status Hutang */}
-            <select
-              value={historyDebtFilter}
-              onChange={(e) => setHistoryDebtFilter(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl bg-white border border-rose-300 text-xs font-bold text-rose-900 focus:border-rose-600 focus:outline-hidden"
-            >
-              <option value="semua">🗒️ Semua Status</option>
-              <option value="belum_lunas">❌ Bon Belum Lunas</option>
-              <option value="lunas">✅ Sudah Lunas</option>
-            </select>
-
             {/* Filter Metode Pembayaran */}
             <select
               value={historyPaymentFilter}
@@ -823,7 +722,6 @@ export default function LaporanPage() {
               <option value="Semua">💳 Semua Pembayaran</option>
               <option value="Tunai">💵 Tunai (Cash)</option>
               <option value="QRIS">📱 QRIS / Transfer</option>
-              <option value="Bon">📄 Bon / Piutang</option>
             </select>
           </div>
 
@@ -840,27 +738,17 @@ export default function LaporanPage() {
                 return (
                   <div
                     key={tx.id}
-                    className={`rounded-2xl border-2 transition-all overflow-hidden ${
-                      tx.payment_status === "Belum Lunas"
-                        ? "border-rose-300 bg-rose-50/40"
-                        : "border-gray-200 bg-gray-50"
-                    } ${isExpanded ? "shadow-md" : ""}`}
+                    className={`rounded-2xl border-2 transition-all overflow-hidden border-gray-200 bg-gray-50 ${isExpanded ? "shadow-md" : ""}`}
                   >
                     {/* Baris Ringkasan */}
                     <div className="p-3.5">
                       <div className="flex flex-wrap items-center gap-2 text-xs pb-2 border-b border-gray-200/60 mb-2">
                         <span className="font-black text-gray-900">#{tx.id.substring(0, 8)}</span>
                         <span className={`px-2 py-0.5 text-[10px] font-black rounded-md ${
-                          tx.payment_method === "Bon" ? "bg-amber-200 text-amber-900"
-                          : tx.payment_method === "QRIS" ? "bg-blue-200 text-blue-900"
-                          : "bg-emerald-200 text-emerald-900"
+                          tx.payment_method === "QRIS" ? "bg-blue-200 text-blue-900" : "bg-emerald-200 text-emerald-900"
                         }`}>{tx.payment_method || "Tunai"}</span>
-                        <span className={`px-2 py-0.5 text-[10px] font-black rounded-md ${
-                          tx.payment_status === "Belum Lunas"
-                            ? "bg-rose-600 text-white animate-pulse"
-                            : "bg-emerald-100 text-emerald-800"
-                        }`}>
-                          {tx.payment_status === "Belum Lunas" ? "BELUM LUNAS" : "LUNAS"}
+                        <span className="px-2 py-0.5 text-[10px] font-black rounded-md bg-emerald-100 text-emerald-800">
+                          LUNAS
                         </span>
                         <span className="ml-auto text-gray-400 font-semibold">{formatDateTime(tx.created_at)}</span>
                       </div>
@@ -897,16 +785,6 @@ export default function LaporanPage() {
                           >
                             <Download className="w-3.5 h-3.5" />
                           </button>
-
-                          {/* Tombol Tandai Lunas */}
-                          {tx.payment_status === "Belum Lunas" && (
-                            <button
-                              onClick={() => handlePayDebt(tx.id, tx.customer_name || "Pelanggan")}
-                              className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-sm"
-                            >
-                              Tandai Lunas
-                            </button>
-                          )}
                         </div>
                       </div>
                     </div>
