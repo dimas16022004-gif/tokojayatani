@@ -139,29 +139,31 @@ export default function KasirPage() {
         0
       );
 
-      // 1. Insert ke tabel transactions
-      const { data: newTx, error: txErr } = await supabase
+      const txId = crypto.randomUUID();
+
+      // 1. Insert ke tabel transactions (tanpa .select() untuk menghindari stale schema cache di Supabase PostgREST)
+      const { error: txErr } = await supabase
         .from("transactions")
         .insert([
           {
+            id: txId,
             total_amount: totalAmount,
             total_profit: totalProfit,
             payment_method: paymentMethod,
             payment_status: paymentStatus,
             customer_name: customerName || "Pelanggan Umum",
           },
-        ])
-        .select()
-        .single();
+        ]);
 
-      if (txErr || !newTx?.id) {
-        alert(`❌ Transaksi GAGAL disimpan: ${txErr?.message || "Terjadi kesalahan database"}`);
+      if (txErr) {
+        console.error("Error insert transactions:", txErr);
+        alert(`❌ Transaksi GAGAL disimpan: ${txErr.message || "Terjadi kesalahan database"}`);
         return false;
       }
 
       // 2. Insert ke tabel transaction_items
       const itemPayload = cart.map((item) => ({
-        transaction_id: newTx.id,
+        transaction_id: txId,
         product_id: item.product.id,
         product_name: item.product.name,
         quantity: item.quantity,
