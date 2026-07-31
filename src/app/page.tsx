@@ -119,12 +119,11 @@ export default function KasirPage() {
 
   const handleClearCart = () => setCart([]);
 
-  // Eksekusi Transaksi (Direct Table Insert untuk menjamin status Lunas / Belum Lunas akurat)
+  // Eksekusi Transaksi Kasir (Tunai / QRIS)
   const handleProcessTransaction = async (
     paymentAmount: number,
     paymentMethod: PaymentMethod,
-    customerName: string,
-    paymentStatus: "Lunas" | "Belum Lunas" = "Lunas"
+    customerName: string
   ): Promise<boolean> => {
     if (cart.length === 0) return false;
 
@@ -141,8 +140,8 @@ export default function KasirPage() {
 
       const txId = crypto.randomUUID();
 
-      // 1. Insert ke tabel transactions (dengan fallback otomatis jika kolom payment_status belum ada di Supabase Cloud DB)
-      let { error: txErr } = await supabase
+      // 1. Insert ke tabel transactions (kolom standar: id, total_amount, total_profit, payment_method, customer_name)
+      const { error: txErr } = await supabase
         .from("transactions")
         .insert([
           {
@@ -150,31 +149,9 @@ export default function KasirPage() {
             total_amount: totalAmount,
             total_profit: totalProfit,
             payment_method: paymentMethod,
-            payment_status: paymentStatus,
             customer_name: customerName || "Pelanggan Umum",
           },
         ]);
-
-      // Fallback: Jika Supabase Cloud menolak kolom payment_status (mis. belum dibuat di DB cloud),
-      // tandai status Belum Lunas di nama pembeli agar transaksi 100% SUKSES TERSIMPAN.
-      if (txErr && (txErr.message.includes("column") || txErr.message.includes("schema cache"))) {
-        const fallbackName = paymentStatus === "Belum Lunas"
-          ? `${customerName || "Pelanggan Umum"} [BELUM LUNAS]`
-          : (customerName || "Pelanggan Umum");
-
-        const fallbackRes = await supabase
-          .from("transactions")
-          .insert([
-            {
-              id: txId,
-              total_amount: totalAmount,
-              total_profit: totalProfit,
-              payment_method: paymentMethod,
-              customer_name: fallbackName,
-            },
-          ]);
-        txErr = fallbackRes.error;
-      }
 
       if (txErr) {
         console.error("Error insert transactions:", txErr);

@@ -26,8 +26,7 @@ interface CartDrawerProps {
   onProcessTransaction: (
     paymentAmount: number,
     paymentMethod: PaymentMethod,
-    customerName: string,
-    paymentStatus?: "Lunas" | "Belum Lunas"
+    customerName: string
   ) => Promise<boolean>;
 }
 
@@ -40,7 +39,6 @@ export default function CartDrawer({
 }: CartDrawerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Tunai");
-  const [paymentStatus, setPaymentStatus] = useState<"Lunas" | "Belum Lunas">("Lunas");
   const [customerName, setCustomerName] = useState<string>("Pelanggan Umum");
   const [paymentInput, setPaymentInput] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -50,7 +48,6 @@ export default function CartDrawer({
     paymentAmount: number;
     changeAmount: number;
     paymentMethod: PaymentMethod;
-    paymentStatus: "Lunas" | "Belum Lunas";
     customerName: string;
     items: CartItem[];
     date: string;
@@ -76,12 +73,8 @@ export default function CartDrawer({
 
   const handleCheckout = async () => {
     if (cart.length === 0) return;
-    if (paymentMethod === "Tunai" && paymentNumber < totalAmount && paymentInput !== "" && paymentStatus === "Lunas") {
+    if (paymentMethod === "Tunai" && paymentNumber < totalAmount && paymentInput !== "") {
       alert("Jumlah uang pembayaran kurang dari total belanja!");
-      return;
-    }
-    if (paymentStatus === "Belum Lunas" && (!customerName.trim() || customerName === "Pelanggan Umum")) {
-      alert("Harap masukkan Nama Pembeli / Pelanggan jika status pembayaran Belum Lunas!");
       return;
     }
 
@@ -91,8 +84,7 @@ export default function CartDrawer({
     const success = await onProcessTransaction(
       finalPayment,
       paymentMethod,
-      customerName,
-      paymentStatus
+      customerName
     );
     setIsProcessing(false);
 
@@ -102,7 +94,6 @@ export default function CartDrawer({
         paymentAmount: finalPayment,
         changeAmount: paymentMethod === "Tunai" ? finalPayment - totalAmount : 0,
         paymentMethod,
-        paymentStatus,
         customerName: customerName || "Pelanggan Umum",
         items: [...cart],
         date: new Date().toLocaleString("id-ID"),
@@ -112,7 +103,6 @@ export default function CartDrawer({
       setPaymentInput("");
       setCustomerName("Pelanggan Umum");
       setPaymentMethod("Tunai");
-      setPaymentStatus("Lunas");
       setIsOpen(false);
     }
   };
@@ -246,61 +236,6 @@ export default function CartDrawer({
                 <span>TOTAL HARGA:</span>
                 <span className="text-emerald-700">{formatRupiah(totalAmount)}</span>
               </div>
-            </div>
-
-            {/* Status Pelunasan */}
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">
-                Status Pelunasan
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPaymentStatus("Lunas")}
-                  className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border-2 transition-all ${
-                    paymentStatus === "Lunas"
-                      ? "border-emerald-600 bg-emerald-50 text-emerald-900 shadow-xs"
-                      : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  <CheckCircle className="w-4 h-4 text-emerald-700" />
-                  <span>✅ Lunas</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPaymentStatus("Belum Lunas")}
-                  className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border-2 transition-all ${
-                    paymentStatus === "Belum Lunas"
-                      ? "border-rose-600 bg-rose-50 text-rose-900 shadow-xs"
-                      : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  <X className="w-4 h-4 text-rose-700" />
-                  <span>⏳ Belum Lunas</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Nama Pembeli / Pelanggan */}
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase mb-1 flex items-center justify-between">
-                <span>Nama Pembeli</span>
-                {paymentStatus === "Belum Lunas" && (
-                  <span className="text-[10px] text-rose-600 font-extrabold">*Wajib Diisi</span>
-                )}
-              </label>
-              <input
-                type="text"
-                placeholder="Contoh: Pak Haji Ahmad"
-                value={customerName === "Pelanggan Umum" ? "" : customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                className={`w-full px-3 py-2 rounded-xl border-2 font-bold text-sm text-gray-900 focus:outline-hidden transition-colors ${
-                  paymentStatus === "Belum Lunas"
-                    ? "border-rose-300 bg-rose-50/40 focus:border-rose-600"
-                    : "border-gray-300 bg-white focus:border-emerald-600"
-                }`}
-              />
             </div>
 
             {/* Pilih Metode Pembayaran */}
