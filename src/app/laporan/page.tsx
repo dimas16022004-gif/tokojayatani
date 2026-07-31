@@ -81,11 +81,24 @@ export default function LaporanPage() {
         .order("created_at", { ascending: false });
 
       if (!txError && txData) {
-        const formattedTx = txData.map((tx: any) => ({
-          ...tx,
-          payment_status: tx.payment_status || "Lunas",
-          items: tx.items && tx.items.length > 0 ? tx.items : (tx.transaction_items || []),
-        }));
+        const formattedTx = txData.map((tx: any) => {
+          const isMarkedUnpaidInName =
+            tx.customer_name && tx.customer_name.includes("[BELUM LUNAS]");
+          const cleanName = tx.customer_name
+            ? tx.customer_name.replace(/\s*\[BELUM LUNAS\]/gi, "").trim()
+            : "Pelanggan Umum";
+          const finalStatus =
+            tx.payment_status === "Belum Lunas" || isMarkedUnpaidInName
+              ? "Belum Lunas"
+              : "Lunas";
+
+          return {
+            ...tx,
+            customer_name: cleanName || "Pelanggan Umum",
+            payment_status: finalStatus,
+            items: tx.items && tx.items.length > 0 ? tx.items : (tx.transaction_items || []),
+          };
+        });
         setTransactions(formattedTx as Transaction[]);
       } else {
         setTransactions([]);
@@ -242,10 +255,25 @@ export default function LaporanPage() {
     if (!window.confirm(confirmMsg)) return;
 
     try {
-      const { error } = await supabase
+      let { error } = await supabase
         .from("transactions")
         .update({ payment_status: targetStatus })
         .eq("id", tx.id);
+
+      // Fallback jika kolom payment_status belum ada di DB Cloud
+      if (error && (error.message.includes("column") || error.message.includes("schema cache"))) {
+        const currentCustName = tx.customer_name || "Pelanggan Umum";
+        const newName = targetStatus === "Belum Lunas"
+          ? `${currentCustName} [BELUM LUNAS]`
+          : currentCustName.replace(/\s*\[BELUM LUNAS\]/gi, "").trim();
+
+        const fallbackRes = await supabase
+          .from("transactions")
+          .update({ customer_name: newName })
+          .eq("id", tx.id);
+
+        error = fallbackRes.error;
+      }
 
       if (error) {
         console.warn("Update status error:", error.message);
