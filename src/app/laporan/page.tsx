@@ -242,10 +242,9 @@ export default function LaporanPage() {
     if (!window.confirm(confirmMsg)) return;
 
     try {
-      const nowIso = targetStatus === "Lunas" ? new Date().toISOString() : null;
       const { error } = await supabase
         .from("transactions")
-        .update({ payment_status: targetStatus, paid_at: nowIso })
+        .update({ payment_status: targetStatus })
         .eq("id", tx.id);
 
       if (error) {

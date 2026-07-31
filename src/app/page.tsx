@@ -149,7 +149,6 @@ export default function KasirPage() {
             payment_method: paymentMethod,
             payment_status: paymentStatus,
             customer_name: customerName || "Pelanggan Umum",
-            paid_at: paymentStatus === "Lunas" ? new Date().toISOString() : null,
           },
         ])
         .select()
