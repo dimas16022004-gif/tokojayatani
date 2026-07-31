@@ -24,6 +24,7 @@ import {
   CalendarCheck,
   ChevronDown,
   ChevronUp,
+  Trash2,
 } from "lucide-react";
 
 export default function LaporanPage() {
@@ -170,6 +171,66 @@ export default function LaporanPage() {
     (sum, tx) => sum + Number(tx.total_profit),
     0
   );
+
+  // Hapus 1 Transaksi & Kembalikan Stok Produk
+  const handleDeleteSingleTransaction = async (tx: Transaction) => {
+    const confirmDelete = window.confirm(
+      `⚠️ Hapus transaksi #${tx.id.substring(0, 8)} (${formatRupiah(tx.total_amount)})?\n\n` +
+      `Stok barang dalam nota ini akan otomatis dikembalikan ke persediaan produk.\n\n` +
+      `Lanjutkan penghapusan?`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      // 1. Kembalikan stok untuk setiap item barang
+      const items = (tx.items && tx.items.length > 0)
+        ? tx.items
+        : ((tx as any).transaction_items && (tx as any).transaction_items.length > 0)
+        ? (tx as any).transaction_items
+        : [];
+
+      for (const item of items) {
+        if (item.product_id) {
+          const { data: prod } = await supabase
+            .from("products")
+            .select("stock")
+            .eq("id", item.product_id)
+            .single();
+
+          if (prod) {
+            await supabase
+              .from("products")
+              .update({ stock: prod.stock + item.quantity })
+              .eq("id", item.product_id);
+          }
+        }
+      }
+
+      // 2. Hapus item transaksi dari transaction_items
+      await supabase
+        .from("transaction_items")
+        .delete()
+        .eq("transaction_id", tx.id);
+
+      // 3. Hapus transaksi utama dari transactions
+      const { error } = await supabase
+        .from("transactions")
+        .delete()
+        .eq("id", tx.id);
+
+      if (error) {
+        console.warn("Delete transaction error:", error.message);
+      }
+
+      // 4. Update state lokal & refetch
+      setTransactions((prev) => prev.filter((t) => t.id !== tx.id));
+      await fetchReports();
+      alert(`✅ Transaksi #${tx.id.substring(0, 8)} berhasil dihapus dan stok barang telah dikembalikan.`);
+    } catch (err) {
+      console.error("Gagal menghapus transaksi:", err);
+      alert("❌ Terjadi kesalahan saat menghapus transaksi.");
+    }
+  };
 
   // Ekspor Laporan Bebas / Kapan Saja (.csv)
   // ── RESET TRANSAKSI SETELAH EKSPOR ────────────────────────────────────────
@@ -784,6 +845,15 @@ export default function LaporanPage() {
                             title="Unduh nota ini (.csv)"
                           >
                             <Download className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Hapus 1 Transaksi */}
+                          <button
+                            onClick={() => handleDeleteSingleTransaction(tx)}
+                            className="py-1.5 px-2.5 rounded-xl text-xs font-black flex items-center gap-1 bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 hover:border-rose-300 transition-all"
+                            title="Hapus transaksi ini & kembalikan stok"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
