@@ -15,6 +15,7 @@ import {
   Loader2,
   CreditCard,
   QrCode,
+  Copy,
 } from "lucide-react";
 
 interface CartDrawerProps {
@@ -271,6 +272,37 @@ export default function CartDrawer({
               </div>
             </div>
 
+            {/* Info Rekening Transfer BRI */}
+            {paymentMethod === "QRIS" && (
+              <div className="p-3 bg-blue-50 rounded-2xl border-2 border-blue-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 bg-blue-700 text-white rounded-lg font-black text-xs flex items-center justify-center shadow-xs">
+                      BRI
+                    </div>
+                    <div>
+                      <p className="text-xs font-black text-blue-950 leading-none">BANK BRI</p>
+                      <p className="text-[10px] font-bold text-blue-700 mt-0.5">Toko Jaya Tani</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText("807901001140535");
+                      alert("✅ Nomor rekening BRI 807901001140535 berhasil disalin!");
+                    }}
+                    className="px-2.5 py-1 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs transition-colors"
+                  >
+                    <Copy className="w-3.5 h-3.5" /> Salin
+                  </button>
+                </div>
+                <div className="p-2 bg-white rounded-xl border border-blue-200 text-center">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">No. Rekening BRI</p>
+                  <p className="text-base font-black text-blue-950 tracking-wider">8079-0100-1140-535</p>
+                </div>
+              </div>
+            )}
+
             {/* Payment Input (Hanya untuk Tunai) */}
             {paymentMethod === "Tunai" && (
               <div className="space-y-1.5">
@@ -357,6 +389,9 @@ export default function CartDrawer({
               <p className="text-xs text-gray-500 font-semibold">{completedTxData.date}</p>
               <div className="mt-2 text-xs font-bold text-gray-800 space-y-0.5">
                 <p>Metode: <strong className="uppercase">{completedTxData.paymentMethod}</strong></p>
+                {completedTxData.paymentMethod === "QRIS" && (
+                  <p className="text-blue-700 font-extrabold">BRI: 8079-0100-1140-535</p>
+                )}
                 {completedTxData.customerName && (
                   <p>Pembeli: <strong>{completedTxData.customerName}</strong></p>
                 )}
